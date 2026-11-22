@@ -14,10 +14,28 @@ repositories {
     mavenCentral()
 }
 
+// Hitta code- och res-mapparna även om de råkat hamna i en undermapp vid uppladdning
+def codeDir = file('code').exists() ? file('code') : (file('velo-client-1.21.11-v5/code').exists() ? file('velo-client-1.21.11-v5/code') : file('src/main/java'))
+def resDir = file('res').exists() ? file('res') : (file('velo-client-1.21.11-v5/res').exists() ? file('velo-client-1.21.11-v5/res') : file('src/main/resources'))
+
 sourceSets {
     modmenuStub {
         java {
-            srcDir 'src/modmenuStub/java'
+            srcDir codeDir
+            include 'ModMenuApi.java'
+            include 'ConfigScreenFactory.java'
+        }
+    }
+    main {
+        java {
+            srcDir codeDir
+            exclude 'ModMenuApi.java'
+            exclude 'ConfigScreenFactory.java'
+        }
+        resources {
+            srcDir resDir
+            exclude 'en_us.json'
+            exclude 'sv_se.json'
         }
     }
 }
@@ -40,6 +58,11 @@ processResources {
     inputs.property "minecraft_version", project.minecraft_version
     inputs.property "loader_version", project.loader_version
     filteringCharset "UTF-8"
+
+    from(resDir) {
+        include 'en_us.json', 'sv_se.json'
+        into 'assets/velocli/lang'
+    }
 
     filesMatching("fabric.mod.json") {
         expand "version": project.version,
