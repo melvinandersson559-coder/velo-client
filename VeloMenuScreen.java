@@ -62,7 +62,18 @@ public class VeloMenuScreen extends Screen {
     }
 
     @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        if (this.client != null && this.client.world == null) {
+            context.fillGradient(0, 0, this.width, this.height, 0xFF060E1F, 0xFF0F2547);
+        } else {
+            context.fill(0, 0, this.width, this.height, 0x88040A17);
+        }
+    }
+
+    @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        super.render(context, mouseX, mouseY, delta);
+
         int panelWidth = 220;
         int panelHeight = 190;
         int x = (this.width - panelWidth) / 2;
@@ -79,8 +90,6 @@ public class VeloMenuScreen extends Screen {
                 y + 12,
                 VeloClient.COLOR_ACCENT
         );
-
-        super.render(context, mouseX, mouseY, delta);
     }
 
     @Override

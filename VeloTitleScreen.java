@@ -141,11 +141,15 @@ public class VeloTitleScreen extends Screen {
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
         context.fillGradient(0, 0, this.width, this.height, 0xFF060E1F, 0xFF0F2547);
-
         context.fill(0, 0, this.width, 3, VeloClient.COLOR_ACCENT);
         context.fill(0, this.height - 2, this.width, this.height, VeloClient.COLOR_BORDER);
+    }
+
+    @Override
+    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        super.render(context, mouseX, mouseY, delta);
 
         int centerX = this.width / 2;
         int centerY = this.height / 2;
@@ -174,8 +178,6 @@ public class VeloTitleScreen extends Screen {
                     VeloClient.COLOR_TEXT
             );
         }
-
-        super.render(context, mouseX, mouseY, delta);
     }
 
     private void renderPlayerCard(DrawContext context, int centerX, int centerY) {

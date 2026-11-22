@@ -14,109 +14,18 @@ repositories {
     mavenCentral()
 }
 
-def generatedResDir = file("${buildDir}/velo-generated-res")
-
-tasks.register('prepareVeloResources') {
-    outputs.dir(generatedResDir)
-    doLast {
-        delete(generatedResDir)
-        generatedResDir.mkdirs()
-        def langDir = new File(generatedResDir, "assets/velocli/lang")
-        langDir.mkdirs()
-
-        def foundModJson = fileTree(dir: '.', include: '**/fabric.mod.json', exclude: ['build/**', '.gradle/**']).files.find()
-        if (foundModJson != null) {
-            copy {
-                from foundModJson
-                into generatedResDir
-            }
-        } else {
-            new File(generatedResDir, "fabric.mod.json").text = '''{
-  "schemaVersion": 1,
-  "id": "velocli",
-  "version": "${version}",
-  "name": "VELO Client",
-  "description": "En stilren blaa Fabric-klientmod med VELO Title Screen, karaktarskort, favoritservrar, HUD och Toggle Sprint.",
-  "authors": ["VELO"],
-  "environment": "client",
-  "entrypoints": {
-    "client": [
-      "com.velo.client.VeloClient"
-    ],
-    "modmenu": [
-      "com.velo.client.VeloModMenuIntegration"
-    ]
-  },
-  "mixins": [
-    "velocli.mixins.json"
-  ],
-  "depends": {
-    "fabricloader": ">=${loader_version}",
-    "minecraft": "~${minecraft_version}",
-    "java": ">=21",
-    "fabric-api": "*"
-  }
-}'''
-        }
-
-        def foundMixinsJson = fileTree(dir: '.', include: '**/velocli.mixins.json', exclude: ['build/**', '.gradle/**']).files.find()
-        if (foundMixinsJson != null) {
-            copy {
-                from foundMixinsJson
-                into generatedResDir
-            }
-        } else {
-            new File(generatedResDir, "velocli.mixins.json").text = '''{
-  "required": true,
-  "minVersion": "0.8",
-  "package": "com.velo.client.mixin",
-  "compatibilityLevel": "JAVA_21",
-  "client": [
-    "TitleScreenMixin"
-  ],
-  "injectors": {
-    "defaultRequire": 1
-  }
-}'''
-        }
-
-        def foundEnUs = fileTree(dir: '.', include: '**/en_us.json', exclude: ['build/**', '.gradle/**']).files.find()
-        if (foundEnUs != null) {
-            copy { from foundEnUs; into langDir }
-        } else {
-            new File(langDir, "en_us.json").text = '{"key.velocli.menu": "Open VELO Client Menu"}'
-        }
-
-        def foundSvSe = fileTree(dir: '.', include: '**/sv_se.json', exclude: ['build/**', '.gradle/**']).files.find()
-        if (foundSvSe != null) {
-            copy { from foundSvSe; into langDir }
-        } else {
-            new File(langDir, "sv_se.json").text = '{"key.velocli.menu": "Öppna VELO Client Meny"}'
-        }
-    }
-}
-
 sourceSets {
-    modmenuStub {
-        java {
-            srcDir '.'
-            include '**/ModMenuApi.java'
-            include '**/ConfigScreenFactory.java'
-            exclude 'build/**'
-            exclude '.gradle/**'
-        }
-    }
     main {
         java {
             srcDir '.'
-            include '**/*.java'
-            exclude '**/ModMenuApi.java'
-            exclude '**/ConfigScreenFactory.java'
-            exclude 'build/**'
-            exclude '.gradle/**'
+            include '*.java'
         }
         resources {
-            srcDirs = [generatedResDir]
+            srcDir '.'
+            include 'fabric.mod.json'
+            include 'velocli.mixins.json'
+            exclude 'build/**'
+            exclude '.gradle/**'
         }
     }
 }
@@ -126,20 +35,18 @@ dependencies {
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-
-    modmenuStubCompileOnly "com.mojang:minecraft:${project.minecraft_version}"
-    modmenuStubCompileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
-    compileOnly sourceSets.modmenuStub.output
 }
-
-compileJava.dependsOn compileModmenuStubJava
-processResources.dependsOn prepareVeloResources
 
 processResources {
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
     inputs.property "loader_version", project.loader_version
     filteringCharset "UTF-8"
+
+    from('.') {
+        include 'en_us.json', 'sv_se.json'
+        into 'assets/velocli/lang'
+    }
 
     filesMatching("fabric.mod.json") {
         expand "version": project.version,
@@ -160,9 +67,13 @@ java {
 }
 
 jar {
+    exclude 'com/terraformersmc/**'
     from("LICENSE") {
         rename { "${it}_${project.base.archivesName.get()}" }
     }
+}
+
+remapJar {
     doLast {
         def jarFile = archiveFile.get().asFile
         def zip = new java.util.zip.ZipFile(jarFile)
@@ -173,11 +84,12 @@ jar {
             "velocli.mixins.json",
             "com/velo/client/VeloClient.class",
             "com/velo/client/VeloTitleScreen.class",
+            "com/velo/client/VeloModMenuIntegration.class",
             "com/velo/client/mixin/TitleScreenMixin.class"
         ]
         def missing = required.findAll { !entries.contains(it) }
         if (!missing.isEmpty()) {
-            throw new GradleException("FEL: Saknar filer i .jar: " + missing + ". Kontrollera att alla .java-filer laddades upp!")
+            throw new GradleException("FEL: Saknar filer i .jar: " + missing + ". Kontrollera att alla .java-filer laddades upp i huvudmappen!")
         }
         println("VERIFIERAD OK: Alla VELO Client-filer finns i " + jarFile.name)
     }
