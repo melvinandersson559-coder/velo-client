@@ -12,9 +12,13 @@ base {
 
 repositories {
     mavenCentral()
-    maven {
-        name = 'Terraformers'
-        url = 'https://maven.terraformersmc.com/'
+}
+
+sourceSets {
+    modmenuStub {
+        java {
+            srcDir 'src/modmenuStub/java'
+        }
     }
 }
 
@@ -23,8 +27,13 @@ dependencies {
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-    modCompileOnly "com.terraformersmc:modmenu:13.0.3"
+
+    modmenuStubCompileOnly "com.mojang:minecraft:${project.minecraft_version}"
+    modmenuStubCompileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
+    compileOnly sourceSets.modmenuStub.output
 }
+
+compileJava.dependsOn compileModmenuStubJava
 
 processResources {
     inputs.property "version", project.version
