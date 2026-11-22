@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Entity.class)
 public class EntityMixin {
 
-    @Inject(method = "changeLookDirection", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "changeLookDirection", at = @At("HEAD"), cancellable = true)
     private void velo$freecamLook(double cursorDeltaX, double cursorDeltaY, CallbackInfo ci) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (FreecamManager.isEnabled() && mc.player != null && (Object) this == mc.player) {
@@ -24,7 +24,7 @@ public class EntityMixin {
         }
     }
 
-    @Inject(method = "move", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "move", at = @At("HEAD"), cancellable = true)
     private void velo$freezePlayerInFreecam(MovementType type, Vec3d movement, CallbackInfo ci) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (FreecamManager.isEnabled() && mc.player != null && (Object) this == mc.player) {

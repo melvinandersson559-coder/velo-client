@@ -4,7 +4,7 @@ import com.velo.client.FreecamManager;
 import net.minecraft.client.render.Camera;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.math.MathHelper;
-import net.minecraft.world.BlockView;
+import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -21,8 +21,8 @@ public abstract class CameraMixin {
     @Shadow
     protected abstract void setRotation(float yaw, float pitch);
 
-    @Inject(method = "update", at = @At("TAIL"), require = 0)
-    private void velo$updateFreecam(BlockView area, Entity focusedEntity, boolean thirdPerson, boolean inverseView, float tickProgress, CallbackInfo ci) {
+    @Inject(method = "update", at = @At("TAIL"))
+    private void velo$updateFreecam(World area, Entity focusedEntity, boolean thirdPerson, boolean inverseView, float tickProgress, CallbackInfo ci) {
         if (FreecamManager.isEnabled()) {
             double x = MathHelper.lerp(tickProgress, FreecamManager.prevCamX, FreecamManager.camX);
             double y = MathHelper.lerp(tickProgress, FreecamManager.prevCamY, FreecamManager.camY);
@@ -32,7 +32,7 @@ public abstract class CameraMixin {
         }
     }
 
-    @Inject(method = "isThirdPerson", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "isThirdPerson", at = @At("HEAD"), cancellable = true)
     private void velo$showSelfInFreecam(CallbackInfoReturnable<Boolean> cir) {
         if (FreecamManager.isEnabled()) {
             cir.setReturnValue(true);

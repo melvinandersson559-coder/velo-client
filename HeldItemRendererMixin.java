@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(HeldItemRenderer.class)
 public class HeldItemRendererMixin {
 
-    @Inject(method = "applyEquipOffset", at = @At("TAIL"), require = 0)
+    @Inject(method = "applyEquipOffset", at = @At("TAIL"))
     private void velo$slimHandTransform(MatrixStack matrices, Arm arm, float equipProgress, CallbackInfo ci) {
         if (VeloClient.slimHand) {
             int side = (arm == Arm.RIGHT) ? 1 : -1;
