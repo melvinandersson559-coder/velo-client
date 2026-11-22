@@ -3,7 +3,7 @@
   "id": "velocli",
   "version": "${version}",
   "name": "VELO Client",
-  "description": "En stilren blaa Fabric-klientmod med VELO Title Screen, karaktarskort, favoritservrar, HUD och Toggle Sprint.",
+  "description": "VELO Client 1.6.0 - Modern blaa ClickGUI, Slim Hand, Freecam, VELO Title Screen, favoritservrar och HUD.",
   "authors": ["VELO"],
   "environment": "client",
   "entrypoints": {

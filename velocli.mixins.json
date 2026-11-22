@@ -4,7 +4,10 @@
   "package": "com.velo.client.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "TitleScreenMixin"
+    "TitleScreenMixin",
+    "HeldItemRendererMixin",
+    "CameraMixin",
+    "EntityMixin"
   ],
   "injectors": {
     "defaultRequire": 1

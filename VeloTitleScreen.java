@@ -143,8 +143,8 @@ public class VeloTitleScreen extends Screen {
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
         context.fillGradient(0, 0, this.width, this.height, 0xFF060E1F, 0xFF0F2547);
-        context.fill(0, 0, this.width, 3, VeloClient.COLOR_ACCENT);
-        context.fill(0, this.height - 2, this.width, this.height, VeloClient.COLOR_BORDER);
+        context.fill(0, 0, this.width, 3, VeloClient.getAccentColor());
+        context.fill(0, this.height - 2, this.width, this.height, VeloClient.getPrimaryBlue());
     }
 
     @Override
@@ -154,8 +154,8 @@ public class VeloTitleScreen extends Screen {
         int centerX = this.width / 2;
         int centerY = this.height / 2;
 
-        context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", 30, 22, VeloClient.COLOR_ACCENT);
-        context.drawTextWithShadow(this.textRenderer, "§7Fabric 1.21.11 • v1.5.0", 30, 34, VeloClient.COLOR_TEXT);
+        context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", 30, 22, VeloClient.getAccentColor());
+        context.drawTextWithShadow(this.textRenderer, "§7Fabric 1.21.11 • v1.6.0", 30, 34, VeloClient.COLOR_TEXT);
 
         renderPlayerCard(context, centerX, centerY);
 
@@ -165,9 +165,9 @@ public class VeloTitleScreen extends Screen {
         int panelY = centerY - 75;
 
         context.fill(panelX, panelY, panelX + panelW, panelY + panelH, VeloClient.COLOR_BG);
-        context.fill(panelX, panelY, panelX + panelW, panelY + 2, VeloClient.COLOR_ACCENT);
-        context.fill(panelX, panelY + panelH - 1, panelX + panelW, panelY + panelH, VeloClient.COLOR_BORDER);
-        context.drawTextWithShadow(this.textRenderer, "§lFAVORITSERVRAR", panelX + 10, panelY + 9, VeloClient.COLOR_ACCENT);
+        context.fill(panelX, panelY, panelX + panelW, panelY + 2, VeloClient.getAccentColor());
+        context.fill(panelX, panelY + panelH - 1, panelX + panelW, panelY + panelH, VeloClient.getPrimaryBlue());
+        context.drawTextWithShadow(this.textRenderer, "§lFAVORITSERVRAR", panelX + 10, panelY + 9, VeloClient.getAccentColor());
 
         if (!addingServer && FavoriteServerManager.getServers().isEmpty()) {
             context.drawCenteredTextWithShadow(
@@ -191,8 +191,8 @@ public class VeloTitleScreen extends Screen {
         int cardY = centerY - 75;
 
         context.fill(cardX, cardY, cardX + cardW, cardY + cardH, VeloClient.COLOR_BG);
-        context.fill(cardX, cardY, cardX + cardW, cardY + 2, VeloClient.COLOR_ACCENT);
-        context.fill(cardX, cardY + cardH - 1, cardX + cardW, cardY + cardH, VeloClient.COLOR_BORDER);
+        context.fill(cardX, cardY, cardX + cardW, cardY + 2, VeloClient.getAccentColor());
+        context.fill(cardX, cardY + cardH - 1, cardX + cardW, cardY + cardH, VeloClient.getPrimaryBlue());
 
         int bob = (int) Math.round(Math.sin(System.currentTimeMillis() / 350.0) * 2.0);
         int scale = 4;
@@ -227,7 +227,7 @@ public class VeloTitleScreen extends Screen {
         }
 
         context.drawCenteredTextWithShadow(this.textRenderer, "§f§l" + playerName, charCenterX, cardY + cardH - 27, VeloClient.COLOR_TEXT);
-        context.drawCenteredTextWithShadow(this.textRenderer, "§b● VELO Client", charCenterX, cardY + cardH - 15, VeloClient.COLOR_ACCENT);
+        context.drawCenteredTextWithShadow(this.textRenderer, "§b● VELO Client", charCenterX, cardY + cardH - 15, VeloClient.getAccentColor());
     }
 
     private void drawSkinRegion(DrawContext context, int[][] skin, int srcX, int srcY, int w, int h, int dstX, int dstY, int scale, boolean overlay) {

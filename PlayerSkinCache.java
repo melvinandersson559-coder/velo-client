@@ -50,7 +50,7 @@ public class PlayerSkinCache {
     private static BufferedImage downloadSkin(String urlStr) {
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(urlStr).toURL().openConnection();
-            conn.setRequestProperty("User-Agent", "VELO-Client/1.5.0");
+            conn.setRequestProperty("User-Agent", "VELO-Client/1.6.0");
             conn.setConnectTimeout(4000);
             conn.setReadTimeout(4000);
             if (conn.getResponseCode() == 200) {
