@@ -316,7 +316,7 @@ public class VeloMenuScreen extends Screen {
         boolean closeHover = mouseX >= closeX && mouseX <= closeX + 16 && mouseY >= closeY && mouseY <= closeY + 20;
         context.drawTextWithShadow(this.textRenderer, "✕", closeX + 4, closeY + 6, closeHover ? accent : 0xFF94A3B8);
 
-        // Breadcrumb: "Movement  ->  Player & Camera"
+        // Breadcrumb: "Movement -> Player & Camera"
         String query = (searchField != null) ? searchField.getText().trim().toLowerCase(Locale.ROOT) : "";
         int breadY = winY + 36;
         drawCategoryIcon(context, selectedCategory, contentX + 14, breadY, accent);
@@ -331,14 +331,14 @@ public class VeloMenuScreen extends Screen {
         } else {
             context.drawTextWithShadow(
                     this.textRenderer,
-                    "§fSearch  §b→  §7"" + searchField.getText() + """,
+                    "§fSearch  §b→  §7\"" + searchField.getText() + "\"",
                     contentX + 30,
                     breadY + 1,
                     0xFFFFFFFF
             );
         }
 
-        // Sektionsrubrik (som "Rotation settings" i BLADE-inspo)
+        // Sektionsrubrik
         int secY = winY + 54;
         context.drawTextWithShadow(this.textRenderer, "§lGeneral settings", contentX + 14, secY, 0xFFE2E8F0);
 
@@ -406,7 +406,6 @@ public class VeloMenuScreen extends Screen {
                 int valW = this.textRenderer.getWidth(valStr);
                 context.drawTextWithShadow(this.textRenderer, valStr, trackX - valW - 8, trackY - 3, accent);
 
-                // Bakgrundsspår + blå fyllnad + vit knob (som i BLADE-inspo)
                 context.fill(trackX, trackY, trackX + trackW, trackY + trackH, 0xFF1E293B);
                 int fillW = (int) (trackW * pct);
                 context.fill(trackX, trackY, trackX + fillW, trackY + trackH, accent);
@@ -432,7 +431,6 @@ public class VeloMenuScreen extends Screen {
     }
 
     private void drawVeloLogo(DrawContext context, int x, int y, int primary, int accent) {
-        // Skarp geometrisk blixt/V-ikon i blått (inspo från BLADE-ikonen)
         context.fill(x, y + 2, x + 12, y + 5, accent);
         context.fill(x + 3, y + 5, x + 10, y + 8, primary);
         context.fill(x + 1, y + 8, x + 11, y + 11, accent);
@@ -445,13 +443,11 @@ public class VeloMenuScreen extends Screen {
     private void drawCategoryIcon(DrawContext context, Category cat, int x, int y, int color) {
         switch (cat) {
             case MOVEMENT -> {
-                // Dubbelpil / vinge
                 context.fill(x + 1, y + 2, x + 8, y + 4, color);
                 context.fill(x + 3, y + 5, x + 10, y + 7, color);
                 context.fill(x + 1, y + 8, x + 8, y + 10, color);
             }
             case VISUALS -> {
-                // Cirkel / öga
                 context.fill(x + 2, y + 1, x + 8, y + 2, color);
                 context.fill(x + 1, y + 2, x + 2, y + 8, color);
                 context.fill(x + 8, y + 2, x + 9, y + 8, color);
@@ -459,12 +455,10 @@ public class VeloMenuScreen extends Screen {
                 context.fill(x + 4, y + 4, x + 6, y + 6, color);
             }
             case HAND -> {
-                // Kamera / hand-kub
                 context.fill(x + 1, y + 3, x + 7, y + 8, color);
                 context.fill(x + 8, y + 4, x + 10, y + 7, color);
             }
             case THEME -> {
-                // Palett / rader
                 context.fill(x + 1, y + 2, x + 9, y + 3, color);
                 context.fill(x + 1, y + 5, x + 9, y + 6, color);
                 context.fill(x + 1, y + 8, x + 9, y + 9, color);
@@ -487,7 +481,6 @@ public class VeloMenuScreen extends Screen {
         int button = click.button();
 
         if (button == 0) {
-            // Stäng-kryss uppe till höger
             int closeX = winX + winW - 22;
             int closeY = winY + 8;
             if (mouseX >= closeX && mouseX <= closeX + 16 && mouseY >= closeY && mouseY <= closeY + 20) {
@@ -495,7 +488,6 @@ public class VeloMenuScreen extends Screen {
                 return true;
             }
 
-            // Klick på kategori i sidopanelen
             Category[] categories = Category.values();
             int catStartY = winY + 52;
             int catH = 26;
@@ -510,7 +502,6 @@ public class VeloMenuScreen extends Screen {
                 }
             }
 
-            // Klick på inställningsrad
             String query = (searchField != null) ? searchField.getText().trim().toLowerCase(Locale.ROOT) : "";
             for (SettingRow row : allRows) {
                 boolean visible = query.isEmpty()

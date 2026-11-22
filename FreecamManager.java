@@ -54,7 +54,6 @@ public class FreecamManager {
         prevCamY = camY;
         prevCamZ = camZ;
 
-        // Flytta inte kameran om en meny eller chatt är öppen
         if (mc.currentScreen != null) return;
 
         float forward = 0.0f;
