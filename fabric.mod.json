@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "velocli",
+  "version": "${version}",
+  "name": "VELO Client",
+  "description": "En stilren blaa Fabric-klientmod med VELO Title Screen, karaktarskort, favoritservrar, HUD och Toggle Sprint.",
+  "authors": ["VELO"],
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "com.velo.client.VeloClient"
+    ],
+    "modmenu": [
+      "com.velo.client.VeloModMenuIntegration"
+    ]
+  },
+  "mixins": [
+    "velocli.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
