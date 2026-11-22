@@ -1,0 +1,35 @@
+name: Bygg VELO Client (.jar)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Hämta koden
+        uses: actions/checkout@v4
+
+      - name: Installera Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Installera Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.2.1'
+
+      - name: Bygg modden
+        run: gradle build
+
+      - name: Ladda upp färdig .jar-fil
+        uses: actions/upload-artifact@v4
+        with:
+          name: VELO-Client-1.21.11-jar
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
