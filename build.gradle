@@ -97,12 +97,14 @@ remapJar {
             "com/velo/client/mixin/HeldItemRendererMixin.class",
             "com/velo/client/mixin/LivingEntityMixin.class",
             "com/velo/client/mixin/CameraMixin.class",
-            "com/velo/client/mixin/EntityMixin.class"
+            "com/velo/client/mixin/EntityMixin.class",
+            "com/velo/client/mixin/GameRendererMixin.class",
+            "com/velo/client/mixin/InGameOverlayRendererMixin.class"
         ]
         def missing = required.findAll { !entries.contains(it) }
         if (!missing.isEmpty()) {
             throw new GradleException("FEL: Saknar filer i .jar: " + missing + ". Kontrollera att alla .java-filer laddades upp i huvudmappen!")
         }
-        println("VERIFIERAD OK: Alla VELO Client 2.1.0-filer finns i " + jarFile.name)
+        println("VERIFIERAD OK: Alla VELO Client 2.2.0-filer finns i " + jarFile.name)
     }
 }

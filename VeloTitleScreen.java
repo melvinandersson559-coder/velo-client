@@ -230,7 +230,7 @@ public class VeloTitleScreen extends Screen {
         // Modern centrerad VELO CLIENT-rubrik + version-pill
         context.drawCenteredTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", cx, cy - 86, accent);
         VeloUiRenderer.drawSmoothPanel(context, cx - 44, cy - 70, 88, 16, 8, 0x990A162E, 0x6638BDF8, false);
-        context.drawCenteredTextWithShadow(this.textRenderer, "§7v2.1  •  Meteor", cx, cy - 66, 0xFFCBD5E1);
+        context.drawCenteredTextWithShadow(this.textRenderer, "§7v2.2  •  Lunar UI", cx, cy - 66, 0xFFCBD5E1);
 
         // Favoritserver-panel uppe till höger
         int panelW = 194;

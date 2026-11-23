@@ -35,11 +35,40 @@ public class VeloUtilityModules {
     public static boolean antiAfk = false;
     public static boolean middleClickPearl = false;
 
-    // Smooth Zoom
+    // Smooth Zoom (per-frame exponential smoothing)
     public static boolean zoomEnabled = true;
     public static int zoomFov = 32;
     private static boolean wasZooming = false;
     private static int savedFov = 90;
+    private static float currentZoomFov = 90.0f;
+    private static long lastZoomNanos = System.nanoTime();
+
+    public static void updateSmoothZoomFrame(MinecraftClient mc, boolean zoomPressed) {
+        long now = System.nanoTime();
+        float dt = Math.min((now - lastZoomNanos) / 1_000_000_000.0f, 0.05f);
+        lastZoomNanos = now;
+
+        if (mc.player == null || mc.world == null) return;
+
+        float factor = 1.0f - (float) Math.exp(-16.0f * dt);
+        if (zoomEnabled && zoomPressed && mc.currentScreen == null) {
+            if (!wasZooming) {
+                savedFov = mc.options.getFov().getValue();
+                currentZoomFov = savedFov;
+                wasZooming = true;
+            }
+            currentZoomFov += (zoomFov - currentZoomFov) * factor;
+            mc.options.getFov().setValue(Math.clamp(Math.round(currentZoomFov), 30, 110));
+        } else if (wasZooming) {
+            currentZoomFov += (savedFov - currentZoomFov) * factor;
+            if (Math.abs(currentZoomFov - savedFov) < 0.6f) {
+                mc.options.getFov().setValue(Math.clamp(savedFov, 30, 110));
+                wasZooming = false;
+            } else {
+                mc.options.getFov().setValue(Math.clamp(Math.round(currentZoomFov), 30, 110));
+            }
+        }
+    }
 
     // AntiAFK & MCP state
     private static int afkTicks = 0;
@@ -71,26 +100,7 @@ public class VeloUtilityModules {
             appliedNightVision = false;
         }
 
-        // 2. SMOOTH ZOOM (Håll inne C)
-        if (zoomEnabled && zoomPressed && mc.currentScreen == null) {
-            if (!wasZooming) {
-                savedFov = mc.options.getFov().getValue();
-                wasZooming = true;
-            }
-            int cur = mc.options.getFov().getValue();
-            int next = cur + (int) Math.round((zoomFov - cur) * 0.45);
-            if (Math.abs(next - zoomFov) <= 2) next = zoomFov;
-            mc.options.getFov().setValue(Math.clamp(next, 30, 110));
-        } else if (wasZooming) {
-            int cur = mc.options.getFov().getValue();
-            int next = cur + (int) Math.round((savedFov - cur) * 0.45);
-            if (Math.abs(next - savedFov) <= 2) {
-                mc.options.getFov().setValue(Math.clamp(savedFov, 30, 110));
-                wasZooming = false;
-            } else {
-                mc.options.getFov().setValue(Math.clamp(next, 30, 110));
-            }
-        }
+        // 2. SMOOTH ZOOM hanteras nu per-frame i updateSmoothZoomFrame() för helt mjuk 144Hz-animation
 
         // 3. AUTO RESPAWN + Dödskoordinater i topp-popup
         if (autoRespawn && mc.currentScreen instanceof DeathScreen) {

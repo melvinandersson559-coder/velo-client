@@ -8,7 +8,9 @@
     "HeldItemRendererMixin",
     "LivingEntityMixin",
     "CameraMixin",
-    "EntityMixin"
+    "EntityMixin",
+    "GameRendererMixin",
+    "InGameOverlayRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

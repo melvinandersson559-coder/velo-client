@@ -4,6 +4,9 @@ import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.MathHelper;
 
@@ -13,439 +16,753 @@ import java.util.Locale;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/**
+ * Helt omarbetad Lunar-inspirerad VELO Client-meny:
+ * - Mörkt frostat glas-fönster med toppflikar, glidande understrykning och sökfält
+ * - Kategori-pills (ALL, RENDER, PLAYER, MOVEMENT, FINDER, VIEWMODEL)
+ * - 3-kolumns kort-grid med Minecraft-ikoner, ENABLED/DISABLED-knappar och inställnings-kugghjul
+ * - 100% framerate-oberoende mjuka animationer (System.nanoTime())
+ */
 public class VeloMenuScreen extends Screen {
     private final Screen parent;
 
-    private enum Category {
-        RENDER("Render & ESP", "Fullbright, ESP, Tracers, Waypoints"),
-        FINDER("Finder", "Base Finder, Block ESP & Spawners"),
-        PLAYER("Player & Chest", "ChestCleaner, AutoTool, Replenish"),
-        VIEWMODEL("ViewModel", "Slow Swing, Scale, Offset & Rotation"),
-        MOVEMENT("Camera & Move", "Freecam, FreeLook, Zoom & Sprint"),
-        HUD("HUD & Theme", "Drag & Drop HUD Editor & Colors");
+    private enum TopTab {
+        MODS("MODS"),
+        SETTINGS("SETTINGS"),
+        WAYPOINTS("WAYPOINTS"),
+        HUD("HUD EDITOR");
 
         final String label;
-        final String subLabel;
-
-        Category(String label, String subLabel) {
-            this.label = label;
-            this.subLabel = subLabel;
-        }
+        TopTab(String label) { this.label = label; }
     }
 
-    private enum RowType {
-        TOGGLE, SLIDER, MODE, ACTION
+    private enum ModCategory {
+        ALL("ALL"),
+        RENDER("RENDER"),
+        PLAYER("PLAYER"),
+        MOVEMENT("MOVEMENT"),
+        FINDER("FINDER"),
+        VIEWMODEL("VIEWMODEL");
+
+        final String label;
+        ModCategory(String label) { this.label = label; }
     }
 
-    private static class SettingRow {
-        final Category category;
+    private enum SettingType { TOGGLE, SLIDER, MODE, ACTION, DANGER_ACTION }
+
+    private static class ModSetting {
         final String name;
         final String subtitle;
-        final RowType type;
-
-        Supplier<Boolean> boolGetter;
-        Consumer<Boolean> boolSetter;
-        Supplier<Float> floatGetter;
-        Consumer<Float> floatSetter;
+        final SettingType type;
+        Supplier<Boolean> boolGet;
+        Consumer<Boolean> boolSet;
+        Supplier<Float> floatGet;
+        Consumer<Float> floatSet;
         float minVal, maxVal;
         String suffix;
-        Supplier<String> modeGetter;
+        Supplier<String> modeGet;
         Runnable action;
-
-        int rowX, rowY, rowW, rowH;
-        boolean visibleOnScreen = false;
         float toggleAnim = 0f;
+        int rx, ry, rw, rh;
+        boolean visible = false;
 
-        static SettingRow toggle(Category cat, String name, String subtitle, Supplier<Boolean> get, Consumer<Boolean> set) {
-            SettingRow r = new SettingRow(cat, name, subtitle, RowType.TOGGLE);
-            r.boolGetter = get;
-            r.boolSetter = set;
-            r.toggleAnim = get.get() ? 1f : 0f;
-            return r;
-        }
-
-        static SettingRow slider(Category cat, String name, String subtitle, float min, float max, String suffix, Supplier<Float> get, Consumer<Float> set) {
-            SettingRow r = new SettingRow(cat, name, subtitle, RowType.SLIDER);
-            r.minVal = min;
-            r.maxVal = max;
-            r.suffix = suffix;
-            r.floatGetter = get;
-            r.floatSetter = set;
-            return r;
-        }
-
-        static SettingRow mode(Category cat, String name, String subtitle, Supplier<String> get, Runnable cycle) {
-            SettingRow r = new SettingRow(cat, name, subtitle, RowType.MODE);
-            r.modeGetter = get;
-            r.action = cycle;
-            return r;
-        }
-
-        static SettingRow action(Category cat, String name, String subtitle, Supplier<String> btnLabel, Runnable run) {
-            SettingRow r = new SettingRow(cat, name, subtitle, RowType.ACTION);
-            r.modeGetter = btnLabel;
-            r.action = run;
-            return r;
-        }
-
-        private SettingRow(Category category, String name, String subtitle, RowType type) {
-            this.category = category;
+        ModSetting(String name, String subtitle, SettingType type) {
             this.name = name;
             this.subtitle = subtitle;
             this.type = type;
         }
+
+        static ModSetting toggle(String name, String sub, Supplier<Boolean> g, Consumer<Boolean> s) {
+            ModSetting m = new ModSetting(name, sub, SettingType.TOGGLE);
+            m.boolGet = g; m.boolSet = s; m.toggleAnim = g.get() ? 1f : 0f;
+            return m;
+        }
+
+        static ModSetting slider(String name, String sub, float min, float max, String suf, Supplier<Float> g, Consumer<Float> s) {
+            ModSetting m = new ModSetting(name, sub, SettingType.SLIDER);
+            m.minVal = min; m.maxVal = max; m.suffix = suf; m.floatGet = g; m.floatSet = s;
+            return m;
+        }
+
+        static ModSetting mode(String name, String sub, Supplier<String> g, Runnable r) {
+            ModSetting m = new ModSetting(name, sub, SettingType.MODE);
+            m.modeGet = g; m.action = r;
+            return m;
+        }
+
+        static ModSetting action(String name, String sub, Supplier<String> g, Runnable r) {
+            ModSetting m = new ModSetting(name, sub, SettingType.ACTION);
+            m.modeGet = g; m.action = r;
+            return m;
+        }
+
+        static ModSetting danger(String name, String sub, Supplier<String> g, Runnable r) {
+            ModSetting m = new ModSetting(name, sub, SettingType.DANGER_ACTION);
+            m.modeGet = g; m.action = r;
+            return m;
+        }
     }
 
-    private Category selectedCategory = Category.RENDER;
+    private static class ModuleCard {
+        final String name;
+        final String description;
+        final ModCategory category;
+        final Item icon;
+        final Supplier<Boolean> getter;
+        final Consumer<Boolean> setter;
+        final List<ModSetting> settings = new ArrayList<>();
+
+        float hoverAnim = 0f;
+        float enableAnim = 0f;
+        int cx, cy, cw, ch;
+        boolean visible = false;
+
+        ModuleCard(String name, String description, ModCategory category, Item icon,
+                   Supplier<Boolean> getter, Consumer<Boolean> setter) {
+            this.name = name;
+            this.description = description;
+            this.category = category;
+            this.icon = icon;
+            this.getter = getter;
+            this.setter = setter;
+            this.enableAnim = getter.get() ? 1f : 0f;
+        }
+
+        ModuleCard add(ModSetting s) {
+            settings.add(s);
+            return this;
+        }
+    }
+
+    private TopTab activeTopTab = TopTab.MODS;
+    private ModCategory activeCategory = ModCategory.ALL;
+    private ModuleCard inspectingModule = null;
+
+    private final List<ModuleCard> modules = new ArrayList<>();
+    private final List<ModSetting> globalSettings = new ArrayList<>();
+
     private TextFieldWidget searchField;
-    private final List<SettingRow> allRows = new ArrayList<>();
-    private SettingRow draggingSlider = null;
+    private ModSetting draggingSlider = null;
 
     private int winX, winY, winW, winH;
-    private final int sidebarW = 136;
-    private int scrollOffset = 0;
+
+    // Ultra-smooth animation state
+    private float openAnim = 0.0f;
+    private float currentScroll = 0.0f;
+    private float targetScroll = 0.0f;
+    private float tabLineX = -1.0f;
+    private float tabLineW = 40.0f;
+    private long lastFrameNanos = System.nanoTime();
 
     public VeloMenuScreen() {
         this(null);
     }
 
     public VeloMenuScreen(Screen parent) {
-        super(Text.literal("VELO Client Meny"));
+        super(Text.literal("VELO Client"));
         this.parent = parent;
-        buildRows();
+        buildModules();
     }
 
-    private void buildRows() {
-        allRows.clear();
+    private void buildModules() {
+        modules.clear();
+        globalSettings.clear();
 
-        // RENDER & ESP
-        allRows.add(SettingRow.toggle(Category.RENDER, "Fullbright", "Se perfekt i mörker och grottor",
+        // --- RENDER ---
+        modules.add(new ModuleCard("FULLBRIGHT", "Se perfekt i mörker & grottor", ModCategory.RENDER, Items.GLOWSTONE_DUST,
                 () -> VeloUtilityModules.fullbright, v -> VeloUtilityModules.fullbright = v));
-        allRows.add(SettingRow.toggle(Category.RENDER, "Player ESP", "Glowing box + HP & avstånd på spelare",
-                () -> VeloWorldFeatures.playerEsp, v -> VeloWorldFeatures.playerEsp = v));
-        allRows.add(SettingRow.toggle(Category.RENDER, "Mob ESP", "Glowing box + HP runt fientliga mobs",
-                () -> VeloWorldFeatures.mobEsp, v -> VeloWorldFeatures.mobEsp = v));
-        allRows.add(SettingRow.toggle(Category.RENDER, "Item ESP", "Visar namn och box på items på marken",
-                () -> VeloWorldFeatures.itemEsp, v -> VeloWorldFeatures.itemEsp = v));
-        allRows.add(SettingRow.toggle(Category.RENDER, "Tracers", "Ritar linjer från skärmens mitt till spelare",
-                () -> VeloWorldFeatures.tracers, v -> VeloWorldFeatures.tracers = v));
-        allRows.add(SettingRow.toggle(Category.RENDER, "Breadcrumbs", "Lämnar ett glödande blått spår bakom dig",
-                () -> VeloWorldFeatures.breadcrumbs, v -> VeloWorldFeatures.breadcrumbs = v));
-        allRows.add(SettingRow.toggle(Category.RENDER, "LogoutSpots", "Markerar exakt var spelare loggar ut",
-                () -> VeloWorldFeatures.logoutSpots, v -> VeloWorldFeatures.logoutSpots = v));
-        allRows.add(SettingRow.toggle(Category.RENDER, "Waypoints", "Visar dina sparade waypoints genom väggar",
-                () -> VeloWorldFeatures.waypointsEnabled, v -> VeloWorldFeatures.waypointsEnabled = v));
-        allRows.add(SettingRow.action(Category.RENDER, "Hantera Waypoints", "Skapa & ta bort waypoints",
-                () -> "Öppna (" + VeloConfigManager.data.waypoints.size() + ") →",
-                () -> {
-                    if (this.client != null) this.client.setScreen(new VeloWaypointScreen(this));
-                }));
 
-        // FINDER
-        allRows.add(SettingRow.toggle(Category.FINDER, "Base Finder", "Top-popup med storlek, redstone, spawners + outline",
+        modules.add(new ModuleCard("NO HURT CAM", "Ingen skärmskakning när du tar skada", ModCategory.RENDER, Items.SHIELD,
+                () -> VeloClient.noHurtCam, v -> VeloClient.noHurtCam = v));
+
+        modules.add(new ModuleCard("LOW FIRE", "Sänker elden så du ser klart", ModCategory.RENDER, Items.BLAZE_POWDER,
+                () -> VeloClient.lowFire, v -> VeloClient.lowFire = v)
+                .add(ModSetting.slider("Fire Height", "Hur långt ner elden sänks", 0.15f, 0.55f, "",
+                        () -> VeloClient.lowFireOffset, v -> VeloClient.lowFireOffset = v)));
+
+        modules.add(new ModuleCard("PLAYER ESP", "Glowing hörnhakar + HP på spelare", ModCategory.RENDER, Items.PLAYER_HEAD,
+                () -> VeloWorldFeatures.playerEsp, v -> VeloWorldFeatures.playerEsp = v));
+
+        modules.add(new ModuleCard("MOB ESP", "Glowing hörnhakar runt fientliga mobs", ModCategory.RENDER, Items.ZOMBIE_HEAD,
+                () -> VeloWorldFeatures.mobEsp, v -> VeloWorldFeatures.mobEsp = v));
+
+        modules.add(new ModuleCard("ITEM ESP", "Visar namn & box på items på marken", ModCategory.RENDER, Items.DIAMOND,
+                () -> VeloWorldFeatures.itemEsp, v -> VeloWorldFeatures.itemEsp = v));
+
+        modules.add(new ModuleCard("TRACERS", "Linjer från skärmens mitt till spelare", ModCategory.RENDER, Items.SPECTRAL_ARROW,
+                () -> VeloWorldFeatures.tracers, v -> VeloWorldFeatures.tracers = v));
+
+        modules.add(new ModuleCard("BREADCRUMBS", "Glödande blått spår bakom dig", ModCategory.RENDER, Items.BLUE_DYE,
+                () -> VeloWorldFeatures.breadcrumbs, v -> VeloWorldFeatures.breadcrumbs = v));
+
+        modules.add(new ModuleCard("LOGOUT SPOTS", "Markerar var spelare loggade ut", ModCategory.RENDER, Items.SKELETON_SKULL,
+                () -> VeloWorldFeatures.logoutSpots, v -> VeloWorldFeatures.logoutSpots = v));
+
+        modules.add(new ModuleCard("WAYPOINTS", "Visa dina sparade waypoints genom väggar", ModCategory.RENDER, Items.COMPASS,
+                () -> VeloWorldFeatures.waypointsEnabled, v -> VeloWorldFeatures.waypointsEnabled = v)
+                .add(ModSetting.action("Hantera Waypoints", "Skapa, visa/dölj eller ta bort waypoints",
+                        () -> "Öppna (" + VeloConfigManager.data.waypoints.size() + ") →",
+                        () -> { if (this.client != null) this.client.setScreen(new VeloWaypointScreen(this)); })));
+
+        // --- FINDER ---
+        modules.add(new ModuleCard("BLOCK ESP", "Glowing hörnhakar runt valda block", ModCategory.FINDER, Items.DIAMOND_ORE,
+                () -> VeloWorldFeatures.blockEspEnabled, v -> VeloWorldFeatures.blockEspEnabled = v)
+                .add(ModSetting.action("Välj Block (Alla)", "Sök & välj bland alla Minecraft-block",
+                        () -> "Välj (" + VeloWorldFeatures.selectedEspBlocks.size() + ") →",
+                        () -> { if (this.client != null) this.client.setScreen(new VeloBlockPickerScreen(this)); }))
+                .add(ModSetting.danger("Reset Block ESP", "Stänger av och rensar alla valda block direkt",
+                        () -> "Reset Alla",
+                        () -> {
+                            VeloWorldFeatures.selectedEspBlocks.clear();
+                            VeloWorldFeatures.blockEspEnabled = false;
+                        }))
+                .add(ModSetting.slider("Sökradie", "Hur långt bort Block ESP letar", 16f, 80f, "m",
+                        () -> (float) VeloWorldFeatures.blockEspRange, v -> VeloWorldFeatures.blockEspRange = Math.round(v))));
+
+        modules.add(new ModuleCard("BASE FINDER", "Top-popup med storlek, kistor & redstone", ModCategory.FINDER, Items.CHEST,
                 () -> VeloWorldFeatures.baseFinderEnabled, v -> {
                     VeloWorldFeatures.baseFinderEnabled = v;
                     if (v) VeloWorldFeatures.clearAlerts();
-                }));
-        allRows.add(SettingRow.slider(Category.FINDER, "Bas Kistor/Shulkers", "Antal för bas-popup",
-                2f, 20f, "", () -> (float) VeloWorldFeatures.baseChestThreshold, v -> VeloWorldFeatures.baseChestThreshold = Math.round(v)));
-        allRows.add(SettingRow.slider(Category.FINDER, "Redstone Gräns", "Block för redstone-farm popup",
-                8f, 60f, "", () -> (float) VeloWorldFeatures.redstoneFarmThreshold, v -> VeloWorldFeatures.redstoneFarmThreshold = Math.round(v)));
-        allRows.add(SettingRow.toggle(Category.FINDER, "Block ESP", "Glowing hörnhakar runt valda block",
-                () -> VeloWorldFeatures.blockEspEnabled, v -> VeloWorldFeatures.blockEspEnabled = v));
-        allRows.add(SettingRow.action(Category.FINDER, "Välj ESP-block (Alla)", "Sök bland alla block i Minecraft",
-                () -> "Välj (" + VeloWorldFeatures.selectedEspBlocks.size() + ") →",
-                () -> {
-                    if (this.client != null) this.client.setScreen(new VeloBlockPickerScreen(this));
-                }));
-        allRows.add(SettingRow.slider(Category.FINDER, "ESP Radie", "Sökradie i block",
-                16f, 80f, "m", () -> (float) VeloWorldFeatures.blockEspRange, v -> VeloWorldFeatures.blockEspRange = Math.round(v)));
-        allRows.add(SettingRow.toggle(Category.FINDER, "Spawner Finder", "Top-popup + glowing outline runt spawners",
+                })
+                .add(ModSetting.slider("Kistor / Shulkers", "Minsta antal för bas-popup", 2f, 20f, "",
+                        () -> (float) VeloWorldFeatures.baseChestThreshold, v -> VeloWorldFeatures.baseChestThreshold = Math.round(v)))
+                .add(ModSetting.slider("Redstone Gräns", "Minsta antal för redstone-farm popup", 8f, 60f, "",
+                        () -> (float) VeloWorldFeatures.redstoneFarmThreshold, v -> VeloWorldFeatures.redstoneFarmThreshold = Math.round(v))));
+
+        modules.add(new ModuleCard("SPAWNER FINDER", "Top-popup + lila outline runt spawners", ModCategory.FINDER, Items.SPAWNER,
                 () -> VeloWorldFeatures.spawnerFinderEnabled, v -> {
                     VeloWorldFeatures.spawnerFinderEnabled = v;
                     if (v) VeloWorldFeatures.clearAlerts();
-                }));
-        allRows.add(SettingRow.mode(Category.FINDER, "Spawner Typ", "Filtrera vilken mob-spawner som söks",
-                VeloWorldFeatures::getSelectedSpawnerLabel,
-                () -> {
-                    VeloWorldFeatures.selectedSpawnerTypeIndex = (VeloWorldFeatures.selectedSpawnerTypeIndex + 1) % VeloWorldFeatures.SPAWNER_TYPES.length;
-                    VeloWorldFeatures.clearAlerts();
-                }));
+                })
+                .add(ModSetting.mode("Spawner Typ", "Filtrera vilken mob-spawner som söks",
+                        VeloWorldFeatures::getSelectedSpawnerLabel, () -> {
+                            VeloWorldFeatures.selectedSpawnerTypeIndex = (VeloWorldFeatures.selectedSpawnerTypeIndex + 1) % VeloWorldFeatures.SPAWNER_TYPES.length;
+                            VeloWorldFeatures.clearAlerts();
+                        })));
 
-        // PLAYER & CHEST
-        allRows.add(SettingRow.toggle(Category.PLAYER, "ChestCleaner", "Rensar automatiskt bort skräp (cobble/dirt m.m.) ur öppna kistor",
-                () -> VeloUtilityModules.chestCleaner, v -> VeloUtilityModules.chestCleaner = v));
-        allRows.add(SettingRow.toggle(Category.PLAYER, "ChestStealer", "Plockar snabbt allt värdefullt ur öppna kistor",
-                () -> VeloUtilityModules.chestStealer, v -> VeloUtilityModules.chestStealer = v));
-        allRows.add(SettingRow.slider(Category.PLAYER, "Chest Delay", "Fördröjning i ticks mellan klick",
-                1f, 10f, "t", () -> (float) VeloUtilityModules.chestDelayTicks, v -> VeloUtilityModules.chestDelayTicks = Math.round(v)));
-        allRows.add(SettingRow.toggle(Category.PLAYER, "AutoTool", "Byter automatiskt till bästa verktyget i hotbaren",
-                () -> VeloUtilityModules.autoTool, v -> VeloUtilityModules.autoTool = v));
-        allRows.add(SettingRow.toggle(Category.PLAYER, "AutoReplenish", "Fyller på block/mat i hotbaren från inventoryt",
-                () -> VeloUtilityModules.autoReplenish, v -> VeloUtilityModules.autoReplenish = v));
-        allRows.add(SettingRow.toggle(Category.PLAYER, "MiddleClickPearl", "Kasta Ender Pearl direkt med mushjulet",
-                () -> VeloUtilityModules.middleClickPearl, v -> VeloUtilityModules.middleClickPearl = v));
-        allRows.add(SettingRow.toggle(Category.PLAYER, "AutoRespawn", "Respawnar direkt & visar dödskoordinater i popup",
-                () -> VeloUtilityModules.autoRespawn, v -> VeloUtilityModules.autoRespawn = v));
-        allRows.add(SettingRow.toggle(Category.PLAYER, "AntiAFK", "Undvik AFK-kick med subtila rörelser",
-                () -> VeloUtilityModules.antiAfk, v -> VeloUtilityModules.antiAfk = v));
-        allRows.add(SettingRow.toggle(Category.PLAYER, "Totem Warning", "Varnar om du har totem i inventory men inte i offhand",
+        // --- PLAYER & CHEST ---
+        modules.add(new ModuleCard("TOTEM WARNING", "Varnar om totem ligger i inv men ej offhand", ModCategory.PLAYER, Items.TOTEM_OF_UNDYING,
                 () -> VeloClient.totemWarning, v -> VeloClient.totemWarning = v));
 
-        // VIEWMODEL
-        allRows.add(SettingRow.toggle(Category.VIEWMODEL, "Slow Swing", "Gör hand-svingningen mjuk & långsam",
-                () -> VeloClient.slowSwing, v -> VeloClient.slowSwing = v));
-        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Swing Speed", "Hastighet (6 normal – 30 långsam)",
-                6f, 30f, "", () -> (float) VeloClient.swingDuration, v -> VeloClient.swingDuration = Math.round(v)));
-        allRows.add(SettingRow.toggle(Category.VIEWMODEL, "Custom ViewModel", "Aktivera storlek, position & vinkel på hand/vapen",
-                () -> VeloClient.slimHand, v -> VeloClient.slimHand = v));
-        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Hand Scale", "Storlek på hand & vapen",
-                0.25f, 1.20f, "", () -> VeloClient.handScale, v -> VeloClient.handScale = v));
-        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Offset X", "Flytta i sidled",
-                -0.35f, 0.35f, "", () -> VeloClient.handOffsetX, v -> VeloClient.handOffsetX = v));
-        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Offset Y", "Flytta upp/ner",
-                -0.35f, 0.35f, "", () -> VeloClient.handOffsetY, v -> VeloClient.handOffsetY = v));
-        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Offset Z", "Avstånd från kameran",
-                -0.50f, 0.25f, "", () -> VeloClient.handOffsetZ, v -> VeloClient.handOffsetZ = v));
-        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Rotation X (Pitch)", "Vinkla upp/ner",
-                -45f, 45f, "°", () -> VeloClient.handRotX, v -> VeloClient.handRotX = v));
-        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Rotation Y (Yaw)", "Vrid i sidled",
-                -45f, 45f, "°", () -> VeloClient.handRotY, v -> VeloClient.handRotY = v));
-        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Rotation Z (Roll)", "Luta vapnet/handen",
-                -45f, 45f, "°", () -> VeloClient.handRotZ, v -> VeloClient.handRotZ = v));
+        modules.add(new ModuleCard("CHESTCLEANER", "Kastar bort skräp-items ur öppna kistor", ModCategory.PLAYER, Items.BARREL,
+                () -> VeloUtilityModules.chestCleaner, v -> VeloUtilityModules.chestCleaner = v)
+                .add(ModSetting.slider("Chest Delay", "Ticks mellan varje klick", 1f, 10f, "t",
+                        () -> (float) VeloUtilityModules.chestDelayTicks, v -> VeloUtilityModules.chestDelayTicks = Math.round(v))));
 
-        // CAMERA & MOVEMENT
-        allRows.add(SettingRow.toggle(Category.MOVEMENT, "Freecam (F6)", "Flyg fritt med kameran genom världen",
-                FreecamManager::isEnabled, FreecamManager::setEnabled));
-        allRows.add(SettingRow.slider(Category.MOVEMENT, "Freecam Speed", "Hastighet i Freecam",
-                0.2f, 3.0f, "x", () -> FreecamManager.speed, v -> FreecamManager.speed = v));
-        allRows.add(SettingRow.toggle(Category.MOVEMENT, "FreeLook (Left Alt)", "Snurra kameran 360° medan du springer rakt fram",
+        modules.add(new ModuleCard("CHESTSTEALER", "Plockar snabbt allt värdefullt ur kistor", ModCategory.PLAYER, Items.ENDER_CHEST,
+                () -> VeloUtilityModules.chestStealer, v -> VeloUtilityModules.chestStealer = v)
+                .add(ModSetting.slider("Chest Delay", "Ticks mellan varje klick", 1f, 10f, "t",
+                        () -> (float) VeloUtilityModules.chestDelayTicks, v -> VeloUtilityModules.chestDelayTicks = Math.round(v))));
+
+        modules.add(new ModuleCard("AUTO TOOL", "Byter automatiskt till bästa verktyget", ModCategory.PLAYER, Items.NETHERITE_PICKAXE,
+                () -> VeloUtilityModules.autoTool, v -> VeloUtilityModules.autoTool = v));
+
+        modules.add(new ModuleCard("AUTO REPLENISH", "Fyller på hotbar från inventoryt", ModCategory.PLAYER, Items.COBBLESTONE,
+                () -> VeloUtilityModules.autoReplenish, v -> VeloUtilityModules.autoReplenish = v));
+
+        modules.add(new ModuleCard("MIDDLE PEARL", "Kastar Ender Pearl direkt med mushjulet", ModCategory.PLAYER, Items.ENDER_PEARL,
+                () -> VeloUtilityModules.middleClickPearl, v -> VeloUtilityModules.middleClickPearl = v));
+
+        modules.add(new ModuleCard("AUTO RESPAWN", "Hoppar över dödsskärm + visar coords", ModCategory.PLAYER, Items.RED_BED,
+                () -> VeloUtilityModules.autoRespawn, v -> VeloUtilityModules.autoRespawn = v));
+
+        modules.add(new ModuleCard("ANTI AFK", "Undvik AFK-kick med små rörelser", ModCategory.PLAYER, Items.CLOCK,
+                () -> VeloUtilityModules.antiAfk, v -> VeloUtilityModules.antiAfk = v));
+
+        // --- MOVEMENT & CAMERA ---
+        modules.add(new ModuleCard("FREECAM", "Flyg fritt med kameran (F6)", ModCategory.MOVEMENT, Items.ELYTRA,
+                FreecamManager::isEnabled, FreecamManager::setEnabled)
+                .add(ModSetting.slider("Freecam Speed", "Flyghastighet", 0.2f, 3.0f, "x",
+                        () -> FreecamManager.speed, v -> FreecamManager.speed = v)));
+
+        modules.add(new ModuleCard("FREELOOK", "360° kamera runt dig (Left Alt)", ModCategory.MOVEMENT, Items.ENDER_EYE,
                 () -> FreecamManager.freeLookEnabled, v -> FreecamManager.freeLookEnabled = v));
-        allRows.add(SettingRow.toggle(Category.MOVEMENT, "Smooth Zoom (C)", "Mjuk inzoomning när du håller inne C",
-                () -> VeloUtilityModules.zoomEnabled, v -> VeloUtilityModules.zoomEnabled = v));
-        allRows.add(SettingRow.slider(Category.MOVEMENT, "Zoom FOV", "Hur långt in den zoomar",
-                30f, 60f, "°", () -> (float) VeloUtilityModules.zoomFov, v -> VeloUtilityModules.zoomFov = Math.round(v)));
-        allRows.add(SettingRow.toggle(Category.MOVEMENT, "Toggle Sprint", "Automatisk sprint framåt",
+
+        modules.add(new ModuleCard("SMOOTH ZOOM", "Mjuk inzoomning när du håller C", ModCategory.MOVEMENT, Items.SPYGLASS,
+                () -> VeloUtilityModules.zoomEnabled, v -> VeloUtilityModules.zoomEnabled = v)
+                .add(ModSetting.slider("Zoom FOV", "Hur långt in den zoomar", 30f, 60f, "°",
+                        () -> (float) VeloUtilityModules.zoomFov, v -> VeloUtilityModules.zoomFov = Math.round(v))));
+
+        modules.add(new ModuleCard("TOGGLE SPRINT", "Automatisk sprint framåt", ModCategory.MOVEMENT, Items.DIAMOND_BOOTS,
                 () -> VeloClient.toggleSprint, v -> VeloClient.toggleSprint = v));
 
-        // HUD & THEME
-        allRows.add(SettingRow.action(Category.HUD, "Öppna HUD Editor (H)", "Dra & släpp alla HUD-element fritt på skärmen",
-                () -> "Öppna Editor →",
-                () -> {
-                    if (this.client != null) this.client.setScreen(new VeloHudEditorScreen(this));
-                }));
-        allRows.add(SettingRow.toggle(Category.HUD, "VELO HUD", "Visa/dölj hela HUD-systemet",
+        // --- VIEWMODEL ---
+        modules.add(new ModuleCard("VIEWMODEL", "Storlek, position & rotation på handen", ModCategory.VIEWMODEL, Items.DIAMOND_SWORD,
+                () -> VeloClient.slimHand, v -> VeloClient.slimHand = v)
+                .add(ModSetting.slider("Hand Scale", "Storlek på hand & vapen", 0.25f, 1.20f, "",
+                        () -> VeloClient.handScale, v -> VeloClient.handScale = v))
+                .add(ModSetting.slider("Offset X", "Flytta i sidled", -0.35f, 0.35f, "",
+                        () -> VeloClient.handOffsetX, v -> VeloClient.handOffsetX = v))
+                .add(ModSetting.slider("Offset Y", "Flytta upp/ner", -0.35f, 0.35f, "",
+                        () -> VeloClient.handOffsetY, v -> VeloClient.handOffsetY = v))
+                .add(ModSetting.slider("Offset Z", "Avstånd från kameran", -0.50f, 0.25f, "",
+                        () -> VeloClient.handOffsetZ, v -> VeloClient.handOffsetZ = v))
+                .add(ModSetting.slider("Rotation X (Pitch)", "Vinkla upp/ner", -45f, 45f, "°",
+                        () -> VeloClient.handRotX, v -> VeloClient.handRotX = v))
+                .add(ModSetting.slider("Rotation Y (Yaw)", "Vrid i sidled", -45f, 45f, "°",
+                        () -> VeloClient.handRotY, v -> VeloClient.handRotY = v))
+                .add(ModSetting.slider("Rotation Z (Roll)", "Luta vapnet/handen", -45f, 45f, "°",
+                        () -> VeloClient.handRotZ, v -> VeloClient.handRotZ = v)));
+
+        modules.add(new ModuleCard("SLOW SWING", "Gör hand-svingningen mjuk & långsam", ModCategory.VIEWMODEL, Items.FEATHER,
+                () -> VeloClient.slowSwing, v -> VeloClient.slowSwing = v)
+                .add(ModSetting.slider("Swing Speed", "Hastighet (6 normal – 30 långsam)", 6f, 30f, "",
+                        () -> (float) VeloClient.swingDuration, v -> VeloClient.swingDuration = Math.round(v))));
+
+        // --- GLOBAL SETTINGS TAB ---
+        globalSettings.add(ModSetting.toggle("VELO HUD", "Visa/dölj hela HUD-systemet",
                 () -> VeloClient.hudEnabled, v -> VeloClient.hudEnabled = v));
-        allRows.add(SettingRow.mode(Category.HUD, "Blue Accent Theme", "Byt blå nyans på hela clienten",
+        globalSettings.add(ModSetting.mode("Accent Theme", "Byt blå färgton på hela clienten",
                 VeloClient::getThemeName, () -> VeloClient.blueThemeIndex = (VeloClient.blueThemeIndex + 1) % 3));
+        globalSettings.add(ModSetting.action("Öppna HUD Editor (H)", "Dra & släpp alla 7 HUD-element fritt",
+                () -> "Öppna Editor →", () -> { if (this.client != null) this.client.setScreen(new VeloHudEditorScreen(this)); }));
+        globalSettings.add(ModSetting.action("Hantera Waypoints", "Skapa och hantera dina sparade waypoints",
+                () -> "Öppna (" + VeloConfigManager.data.waypoints.size() + ") →",
+                () -> { if (this.client != null) this.client.setScreen(new VeloWaypointScreen(this)); }));
+        globalSettings.add(ModSetting.danger("Reset Block ESP", "Rensar och stänger av alla valda ESP-block",
+                () -> "Reset Alla", () -> {
+                    VeloWorldFeatures.selectedEspBlocks.clear();
+                    VeloWorldFeatures.blockEspEnabled = false;
+                }));
     }
 
     @Override
     protected void init() {
-        this.winW = Math.min(510, this.width - 20);
-        this.winH = Math.min(312, this.height - 20);
+        this.winW = Math.min(556, this.width - 24);
+        this.winH = Math.min(338, this.height - 24);
         this.winX = (this.width - this.winW) / 2;
         this.winY = (this.height - this.winH) / 2;
 
-        int contentX = this.winX + this.sidebarW;
-        int contentW = this.winW - this.sidebarW;
-
-        String prevSearch = (searchField != null) ? searchField.getText() : "";
-        searchField = new TextFieldWidget(this.textRenderer, contentX + 18, this.winY + 12, contentW - 52, 16, Text.literal("Sök"));
+        String prev = (searchField != null) ? searchField.getText() : "";
+        int searchW = 114;
+        int searchX = winX + winW - searchW - 34;
+        searchField = new TextFieldWidget(this.textRenderer, searchX + 8, winY + 15, searchW - 14, 14, Text.literal("Search"));
         searchField.setDrawsBackground(false);
-        searchField.setPlaceholder(Text.literal("Sök bland alla moduler..."));
-        searchField.setText(prevSearch);
+        searchField.setPlaceholder(Text.literal("Search..."));
+        searchField.setText(prev);
         this.addDrawableChild(searchField);
+
+        this.lastFrameNanos = System.nanoTime();
     }
 
-    private List<SettingRow> getFilteredRows() {
-        String query = (searchField != null) ? searchField.getText().trim().toLowerCase(Locale.ROOT) : "";
-        List<SettingRow> list = new ArrayList<>();
-        for (SettingRow row : allRows) {
-            if (query.isEmpty()) {
-                if (row.category == selectedCategory) list.add(row);
-            } else if (row.name.toLowerCase(Locale.ROOT).contains(query) || row.subtitle.toLowerCase(Locale.ROOT).contains(query)) {
-                list.add(row);
+    private List<ModuleCard> getFilteredModules() {
+        String q = (searchField != null) ? searchField.getText().trim().toLowerCase(Locale.ROOT) : "";
+        List<ModuleCard> out = new ArrayList<>();
+        for (ModuleCard m : modules) {
+            if (q.isEmpty()) {
+                if (activeCategory == ModCategory.ALL || m.category == activeCategory) {
+                    out.add(m);
+                }
+            } else {
+                if (m.name.toLowerCase(Locale.ROOT).contains(q)
+                        || m.description.toLowerCase(Locale.ROOT).contains(q)
+                        || m.category.label.toLowerCase(Locale.ROOT).contains(q)) {
+                    out.add(m);
+                }
             }
         }
-        return list;
-    }
-
-    private void updateRowLayout(List<SettingRow> visibleRows) {
-        for (SettingRow r : allRows) r.visibleOnScreen = false;
-
-        int contentX = winX + sidebarW;
-        int contentW = winW - sidebarW;
-        int listY = winY + 58;
-        int rowHeight = 38;
-        int maxBottom = winY + winH - 10;
-
-        int maxScroll = Math.max(0, visibleRows.size() * rowHeight - (maxBottom - listY));
-        scrollOffset = MathHelper.clamp(scrollOffset, 0, maxScroll);
-
-        for (int i = 0; i < visibleRows.size(); i++) {
-            SettingRow row = visibleRows.get(i);
-            int ry = listY + i * rowHeight - scrollOffset;
-            if (ry >= listY - 4 && ry + rowHeight - 5 <= maxBottom) {
-                row.rowX = contentX + 12;
-                row.rowY = ry;
-                row.rowW = contentW - 24;
-                row.rowH = rowHeight - 5;
-                row.visibleOnScreen = true;
-            }
-        }
+        return out;
     }
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, 0x88030712);
+        int alpha = Math.clamp(Math.round(openAnim * 135.0f), 0, 135);
+        context.fill(0, 0, this.width, this.height, (alpha << 24) | 0x030712);
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        int primary = VeloClient.getPrimaryBlue();
+    public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
+        long now = System.nanoTime();
+        float dt = Math.min((now - lastFrameNanos) / 1_000_000_000.0f, 0.05f);
+        lastFrameNanos = now;
+
+        float fastSmooth = 1.0f - (float) Math.exp(-16.0f * dt);
+        float medSmooth = 1.0f - (float) Math.exp(-12.0f * dt);
+        openAnim += (1.0f - openAnim) * fastSmooth;
+
         int accent = VeloClient.getAccentColor();
+        int primary = VeloClient.getPrimaryBlue();
+        int slideY = Math.round((1.0f - openAnim) * 16.0f);
+        int wy = winY + slideY;
 
-        VeloUiRenderer.drawSmoothPanel(context, winX, winY, winW, winH, 10, 0xEC060C1A, 0x992563EB, true);
-        VeloUiRenderer.drawSmoothRect(context, winX + 1, winY + 1, sidebarW - 1, winH - 2, 9, 0xF2050A14);
-        context.fill(winX + sidebarW, winY + 2, winX + sidebarW + 1, winY + winH - 2, 0xFF1B2B4B);
+        // Huvudfönster (Lunar-stil frostat mörkt glas)
+        VeloUiRenderer.drawSmoothPanel(ctx, winX, wy, winW, winH, 12, 0xE80A0F1A, 0x6638BDF8, true);
 
-        context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", winX + 14, winY + 14, accent);
-        context.drawTextWithShadow(this.textRenderer, "§7v2.1 • Meteor Edition", winX + 14, winY + 26, 0xFF64748B);
+        // Top Header divider
+        ctx.fill(winX + 12, wy + 38, winX + winW - 12, wy + 39, 0x3394A3B8);
 
-        Category[] categories = Category.values();
-        int catStartY = winY + 46;
-        int catH = 26;
-        for (int i = 0; i < categories.length; i++) {
-            Category cat = categories[i];
-            int cy = catStartY + i * (catH + 4);
-            int cx = winX + 8;
-            int cw = sidebarW - 16;
-            boolean selected = (cat == selectedCategory) && (searchField == null || searchField.getText().isBlank());
-            boolean hovered = mouseX >= cx && mouseX <= cx + cw && mouseY >= cy && mouseY <= cy + catH;
+        // Vänster logga: VELO-emblem + "VELO"
+        VeloUiRenderer.drawSmoothPanel(ctx, winX + 14, wy + 10, 20, 20, 6, primary, accent, false);
+        ctx.drawCenteredTextWithShadow(this.textRenderer, "§lV", winX + 24, wy + 16, 0xFFFFFFFF);
+        ctx.drawTextWithShadow(this.textRenderer, "§lVELO", winX + 40, wy + 16, 0xFFFFFFFF);
 
-            if (selected) {
-                VeloUiRenderer.drawSmoothRect(context, cx, cy, cw, catH, 6, 0xFF14233F);
-                context.fill(cx + 2, cy + 5, cx + 4, cy + catH - 5, accent);
-            } else if (hovered) {
-                VeloUiRenderer.drawSmoothRect(context, cx, cy, cw, catH, 6, 0x8014233F);
+        // Centrerade Top-Tabs (MODS | SETTINGS | WAYPOINTS | HUD EDITOR)
+        TopTab[] tabs = TopTab.values();
+        int tabStartX = winX + 94;
+        int curTabX = tabStartX;
+        for (TopTab tab : tabs) {
+            int tw = this.textRenderer.getWidth(tab.label);
+            boolean active = (tab == activeTopTab && inspectingModule == null);
+            boolean hov = mouseX >= curTabX - 6 && mouseX <= curTabX + tw + 6 && mouseY >= wy + 8 && mouseY <= wy + 34;
+
+            ctx.drawTextWithShadow(ctx.getClass() != null ? this.textRenderer : this.textRenderer,
+                    tab.label, curTabX, wy + 16, active ? 0xFFFFFFFF : (hov ? 0xFFCBD5E1 : 0xFF8896AB));
+
+            if (active) {
+                if (tabLineX < 0) {
+                    tabLineX = curTabX;
+                    tabLineW = tw;
+                } else {
+                    tabLineX += (curTabX - tabLineX) * fastSmooth;
+                    tabLineW += (tw - tabLineW) * fastSmooth;
+                }
             }
-            context.drawTextWithShadow(this.textRenderer, cat.label, cx + 11, cy + 9, selected ? 0xFFFFFFFF : 0xFF94A3B8);
+            curTabX += tw + 20;
         }
 
-        int contentX = winX + sidebarW;
-        int contentW = winW - sidebarW;
-        VeloUiRenderer.drawSmoothPanel(context, contentX + 12, winY + 8, contentW - 40, 20, 6, 0xFF0E182E, 0xFF1E3A6E, false);
+        // Glidande vit/blå understrykning under aktiv flik
+        if (inspectingModule == null && tabLineX >= 0) {
+            VeloUiRenderer.drawSmoothRect(ctx, Math.round(tabLineX), wy + 36, Math.round(tabLineW), 2, 1, accent);
+        }
 
-        int closeX = winX + winW - 22;
-        int closeY = winY + 8;
-        boolean closeHover = mouseX >= closeX && mouseX <= closeX + 16 && mouseY >= closeY && mouseY <= closeY + 20;
-        context.drawTextWithShadow(this.textRenderer, "✕", closeX + 4, closeY + 6, closeHover ? accent : 0xFF94A3B8);
+        // Sökfält-pill uppe till höger
+        int searchW = 114;
+        int searchX = winX + winW - searchW - 34;
+        VeloUiRenderer.drawSmoothPanel(ctx, searchX, wy + 10, searchW, 20, 8, 0xCC121A2B, 0x4494A3B8, false);
 
-        context.drawTextWithShadow(this.textRenderer, "§l" + selectedCategory.label + "  §b→  §7" + selectedCategory.subLabel,
-                contentX + 14, winY + 38, 0xFFFFFFFF);
+        // Stäng-knapp (X)
+        int closeX = winX + winW - 26;
+        int closeY = wy + 10;
+        boolean closeHov = mouseX >= closeX && mouseX <= closeX + 18 && mouseY >= closeY && mouseY <= closeY + 20;
+        VeloUiRenderer.drawSmoothPanel(ctx, closeX, closeY, 18, 20, 6, closeHov ? 0x88EF4444 : 0x441E293B, 0x33FFFFFF, false);
+        ctx.drawCenteredTextWithShadow(this.textRenderer, "✕", closeX + 9, closeY + 6, closeHov ? 0xFFFFFFFF : 0xFF94A3B8);
 
-        List<SettingRow> visibleRows = getFilteredRows();
-        updateRowLayout(visibleRows);
+        // --- INNEHÅLL ---
+        if (inspectingModule != null) {
+            renderModuleSettings(ctx, inspectingModule, wy, mouseX, mouseY, fastSmooth, medSmooth, accent, primary);
+        } else if (activeTopTab == TopTab.MODS) {
+            renderModsGrid(ctx, wy, mouseX, mouseY, fastSmooth, medSmooth, accent, primary);
+        } else if (activeTopTab == TopTab.SETTINGS) {
+            renderSettingsList(ctx, "CLIENT SETTINGS", globalSettings, wy, mouseX, mouseY, fastSmooth, medSmooth, accent, primary, false);
+        }
 
-        for (SettingRow row : visibleRows) {
-            if (!row.visibleOnScreen) continue;
-            boolean hovered = mouseX >= row.rowX && mouseX <= row.rowX + row.rowW && mouseY >= row.rowY && mouseY <= row.rowY + row.rowH;
-            VeloUiRenderer.drawSmoothPanel(context, row.rowX, row.rowY, row.rowW, row.rowH, 7,
-                    hovered ? 0xFF14233F : 0xCC0D1629, hovered ? accent : 0xFF1A2946, false);
+        super.render(ctx, mouseX, mouseY, delta);
+    }
 
-            context.drawTextWithShadow(this.textRenderer, row.name, row.rowX + 10, row.rowY + 6, 0xFFF8FAFC);
-            String subTrim = this.textRenderer.trimToWidth(row.subtitle, row.rowW - 120);
-            context.drawTextWithShadow(this.textRenderer, "§7" + subTrim, row.rowX + 10, row.rowY + 18, 0xFF64748B);
+    private void renderModsGrid(DrawContext ctx, int wy, int mouseX, int mouseY,
+                                float fastSmooth, float medSmooth, int accent, int primary) {
+        // Kategori-pills under headern (ALL | RENDER | PLAYER | MOVEMENT | FINDER | VIEWMODEL)
+        ModCategory[] cats = ModCategory.values();
+        int px = winX + 14;
+        int py = wy + 46;
+        for (ModCategory cat : cats) {
+            int pw = this.textRenderer.getWidth(cat.label) + 16;
+            boolean sel = (cat == activeCategory) && (searchField == null || searchField.getText().isBlank());
+            boolean hov = mouseX >= px && mouseX <= px + pw && mouseY >= py && mouseY <= py + 18;
+            int fill = sel ? 0xDD1C2E4F : (hov ? 0x99162238 : 0x660F1726);
+            int border = sel ? accent : 0x33475569;
+            VeloUiRenderer.drawSmoothPanel(ctx, px, py, pw, 18, 6, fill, border, false);
+            ctx.drawCenteredTextWithShadow(this.textRenderer, cat.label, px + pw / 2, py + 5, sel ? 0xFFFFFFFF : 0xFF94A3B8);
+            px += pw + 6;
+        }
 
-            if (row.type == RowType.TOGGLE) {
-                boolean active = row.boolGetter.get();
-                row.toggleAnim += ((active ? 1f : 0f) - row.toggleAnim) * 0.3f;
+        // Snabb Reset-knapp när man står i FINDER-kategorin!
+        if (activeCategory == ModCategory.FINDER) {
+            int rw = 94;
+            int rx = winX + winW - rw - 14;
+            boolean rHov = mouseX >= rx && mouseX <= rx + rw && mouseY >= py && mouseY <= py + 18;
+            VeloUiRenderer.drawSmoothPanel(ctx, rx, py, rw, 18, 6, rHov ? 0xFFDC2626 : 0xBB3B1219, 0xAAEF4444, false);
+            ctx.drawCenteredTextWithShadow(this.textRenderer, "Reset ESP Blocks", rx + rw / 2, py + 5, 0xFFFFFFFF);
+        }
 
-                int swW = 34, swH = 16;
-                int swX = row.rowX + row.rowW - swW - 10;
-                int swY = row.rowY + (row.rowH - swH) / 2;
-                int swBg = VeloUiRenderer.lerpColor(0xFF1E293B, primary, row.toggleAnim);
-                VeloUiRenderer.drawSmoothRect(context, swX, swY, swW, swH, 8, swBg);
+        // 3-kolumns Modul-kort (Lunar-layout)
+        List<ModuleCard> list = getFilteredModules();
+        for (ModuleCard m : modules) m.visible = false;
 
-                int knobX = swX + 2 + (int) ((swW - 16) * row.toggleAnim);
-                VeloUiRenderer.drawSmoothRect(context, knobX, swY + 2, 12, 12, 6, 0xFFFFFFFF);
-            } else if (row.type == RowType.SLIDER) {
-                float val = row.floatGetter.get();
-                float pct = MathHelper.clamp((val - row.minVal) / (row.maxVal - row.minVal), 0f, 1f);
-                int trackW = 84, trackH = 6;
-                int trackX = row.rowX + row.rowW - trackW - 12;
-                int trackY = row.rowY + (row.rowH - trackH) / 2 + 1;
+        int gridTop = wy + 72;
+        int gridBottom = wy + winH - 12;
+        int cols = 3;
+        int gap = 10;
+        int cardW = (winW - 28 - gap * (cols - 1)) / cols;
+        int cardH = 84;
 
-                String valStr = (row.maxVal - row.minVal >= 5f)
-                        ? String.format(Locale.ROOT, "%d%s", Math.round(val), row.suffix)
-                        : String.format(Locale.ROOT, "%.2f%s", val, row.suffix);
-                context.drawTextWithShadow(this.textRenderer, valStr, trackX - this.textRenderer.getWidth(valStr) - 8, trackY - 2, accent);
-                VeloUiRenderer.drawSmoothRect(context, trackX, trackY, trackW, trackH, 3, 0xFF1E293B);
-                int fillW = Math.max(4, (int) (trackW * pct));
-                VeloUiRenderer.drawSmoothRect(context, trackX, trackY, fillW, trackH, 3, accent);
-                VeloUiRenderer.drawSmoothRect(context, trackX + (int) (trackW * pct) - 5, trackY - 2, 10, 10, 5, 0xFFFFFFFF);
-            } else if (row.type == RowType.MODE || row.type == RowType.ACTION) {
-                String modeVal = row.modeGetter.get();
-                int pillW = this.textRenderer.getWidth(modeVal) + 16;
-                int pillH = 18;
-                int pillX = row.rowX + row.rowW - pillW - 10;
-                int pillY = row.rowY + (row.rowH - pillH) / 2;
-                int pillFill = (row.type == RowType.ACTION && hovered) ? primary : 0xFF162542;
-                VeloUiRenderer.drawSmoothPanel(context, pillX, pillY, pillW, pillH, 6, pillFill, accent, false);
-                context.drawTextWithShadow(this.textRenderer, modeVal, pillX + 8, pillY + 5, 0xFFFFFFFF);
+        int rows = (list.size() + cols - 1) / cols;
+        float maxScroll = Math.max(0.0f, rows * (cardH + gap) - (gridBottom - gridTop));
+        targetScroll = MathHelper.clamp(targetScroll, 0.0f, maxScroll);
+        currentScroll += (targetScroll - currentScroll) * fastSmooth;
+
+        ctx.enableScissor(winX + 10, gridTop, winX + winW - 10, gridBottom);
+
+        for (int i = 0; i < list.size(); i++) {
+            ModuleCard m = list.get(i);
+            int row = i / cols;
+            int col = i % cols;
+            int cx = winX + 14 + col * (cardW + gap);
+            int cy = gridTop + row * (cardH + gap) - Math.round(currentScroll);
+
+            if (cy + cardH < gridTop || cy > gridBottom) continue;
+
+            m.cx = cx; m.cy = cy; m.cw = cardW; m.ch = cardH; m.visible = true;
+
+            boolean enabled = m.getter.get();
+            boolean hovered = mouseX >= cx && mouseX <= cx + cardW && mouseY >= cy && mouseY <= cy + cardH
+                    && mouseY >= gridTop && mouseY <= gridBottom;
+
+            m.hoverAnim += ((hovered ? 1.0f : 0.0f) - m.hoverAnim) * fastSmooth;
+            m.enableAnim += ((enabled ? 1.0f : 0.0f) - m.enableAnim) * medSmooth;
+
+            int cardFill = VeloUiRenderer.lerpColor(0xB80E1626, 0xD815233D, m.hoverAnim);
+            int baseBorder = VeloUiRenderer.lerpColor(0x44334155, (0xAA << 24) | (accent & 0x00FFFFFF), m.enableAnim);
+            int cardBorder = VeloUiRenderer.lerpColor(baseBorder, 0xDDFFFFFF, m.hoverAnim * 0.35f);
+
+            VeloUiRenderer.drawSmoothPanel(ctx, cx, cy, cardW, cardH, 9, cardFill, cardBorder, false);
+
+            // Kugghjul uppe till höger om modulen har inställningar
+            if (!m.settings.isEmpty()) {
+                int gx = cx + cardW - 22;
+                int gy = cy + 6;
+                boolean gHov = mouseX >= gx && mouseX <= gx + 16 && mouseY >= gy && mouseY <= gy + 16;
+                VeloUiRenderer.drawSmoothPanel(ctx, gx, gy, 16, 16, 5, gHov ? 0x9938BDF8 : 0x551E293B, 0x44FFFFFF, false);
+                ctx.drawCenteredTextWithShadow(this.textRenderer, "⚙", gx + 8, gy + 4, gHov ? 0xFFFFFFFF : 0xFF94A3B8);
+            }
+
+            // Centrerad ikon-badge
+            int iconBoxX = cx + (cardW - 24) / 2;
+            int iconBoxY = cy + 10;
+            int iconBg = VeloUiRenderer.lerpColor(0x66162238, (0x33 << 24) | (accent & 0x00FFFFFF), m.enableAnim);
+            VeloUiRenderer.drawSmoothRect(ctx, iconBoxX, iconBoxY, 24, 24, 7, iconBg);
+            ctx.drawItem(new ItemStack(m.icon), iconBoxX + 4, iconBoxY + 4);
+
+            // Modulnamn
+            ctx.drawCenteredTextWithShadow(this.textRenderer, "§l" + m.name, cx + cardW / 2, cy + 40, 0xFFF8FAFC);
+
+            // ENABLED / DISABLED-knapp längst ner på kortet (Lunar-stil!)
+            int bx = cx + 8;
+            int by = cy + cardH - 24;
+            int bw = cardW - 16;
+            int bh = 18;
+            int btnFill = VeloUiRenderer.lerpColor(0xCC1E293B, 0xEE10B981, m.enableAnim);
+            int btnBorder = VeloUiRenderer.lerpColor(0x44475569, 0xFF34D399, m.enableAnim);
+            VeloUiRenderer.drawSmoothPanel(ctx, bx, by, bw, bh, 6, btnFill, btnBorder, false);
+
+            String btnText = enabled ? "ENABLED" : "DISABLED";
+            int textCol = VeloUiRenderer.lerpColor(0xFF94A3B8, 0xFFFFFFFF, m.enableAnim);
+            ctx.drawCenteredTextWithShadow(this.textRenderer, "§l" + btnText, bx + bw / 2, by + 5, textCol);
+        }
+
+        ctx.disableScissor();
+    }
+
+    private void renderModuleSettings(DrawContext ctx, ModuleCard mod, int wy, int mouseX, int mouseY,
+                                      float fastSmooth, float medSmooth, int accent, int primary) {
+        renderSettingsList(ctx, mod.name + "  §7•  INSTÄLLNINGAR", mod.settings, wy, mouseX, mouseY, fastSmooth, medSmooth, accent, primary, true);
+    }
+
+    private void renderSettingsList(DrawContext ctx, String headerTitle, List<ModSetting> settings, int wy,
+                                    int mouseX, int mouseY, float fastSmooth, float medSmooth, int accent, int primary, boolean showBack) {
+        int topY = wy + 48;
+        if (showBack) {
+            int bx = winX + 14;
+            boolean bHov = mouseX >= bx && mouseX <= bx + 74 && mouseY >= topY && mouseY <= topY + 20;
+            VeloUiRenderer.drawSmoothPanel(ctx, bx, topY, 74, 20, 6, bHov ? primary : 0xCC15223B, accent, false);
+            ctx.drawCenteredTextWithShadow(this.textRenderer, "← Tillbaka", bx + 37, topY + 6, 0xFFFFFFFF);
+            ctx.drawTextWithShadow(this.textRenderer, "§l" + headerTitle, bx + 86, topY + 6, 0xFFFFFFFF);
+        } else {
+            ctx.drawTextWithShadow(this.textRenderer, "§l" + headerTitle, winX + 16, topY + 6, accent);
+        }
+
+        int listTop = wy + 76;
+        int listBottom = wy + winH - 12;
+        int rowH = 40;
+
+        float maxScroll = Math.max(0.0f, settings.size() * rowH - (listBottom - listTop));
+        targetScroll = MathHelper.clamp(targetScroll, 0.0f, maxScroll);
+        currentScroll += (targetScroll - currentScroll) * fastSmooth;
+
+        ctx.enableScissor(winX + 10, listTop, winX + winW - 10, listBottom);
+
+        for (int i = 0; i < settings.size(); i++) {
+            ModSetting s = settings.get(i);
+            s.visible = false;
+            int ry = listTop + i * rowH - Math.round(currentScroll);
+            if (ry + rowH < listTop || ry > listBottom) continue;
+
+            s.rx = winX + 14;
+            s.ry = ry;
+            s.rw = winW - 28;
+            s.rh = rowH - 6;
+            s.visible = true;
+
+            boolean hov = mouseX >= s.rx && mouseX <= s.rx + s.rw && mouseY >= s.ry && mouseY <= s.ry + s.rh;
+            VeloUiRenderer.drawSmoothPanel(ctx, s.rx, s.ry, s.rw, s.rh, 8,
+                    hov ? 0xD815233D : 0xB80E1626, hov ? accent : 0x44334155, false);
+
+            ctx.drawTextWithShadow(this.textRenderer, "§l" + s.name, s.rx + 12, s.ry + 6, 0xFFF8FAFC);
+            ctx.drawTextWithShadow(this.textRenderer, "§7" + s.subtitle, s.rx + 12, s.ry + 19, 0xFF94A3B8);
+
+            if (s.type == SettingType.TOGGLE) {
+                boolean on = s.boolGet.get();
+                s.toggleAnim += ((on ? 1.0f : 0.0f) - s.toggleAnim) * fastSmooth;
+                int swW = 36, swH = 16;
+                int swX = s.rx + s.rw - swW - 12;
+                int swY = s.ry + (s.rh - swH) / 2;
+                int bg = VeloUiRenderer.lerpColor(0xFF1E293B, 0xFF10B981, s.toggleAnim);
+                VeloUiRenderer.drawSmoothRect(ctx, swX, swY, swW, swH, 8, bg);
+                int knobX = swX + 2 + Math.round((swW - 16) * s.toggleAnim);
+                VeloUiRenderer.drawSmoothRect(ctx, knobX, swY + 2, 12, 12, 6, 0xFFFFFFFF);
+            } else if (s.type == SettingType.SLIDER) {
+                float val = s.floatGet.get();
+                float pct = MathHelper.clamp((val - s.minVal) / (s.maxVal - s.minVal), 0f, 1f);
+                int trackW = 110, trackH = 6;
+                int trackX = s.rx + s.rw - trackW - 14;
+                int trackY = s.ry + (s.rh - trackH) / 2 + 1;
+
+                String valStr = (s.maxVal - s.minVal >= 5f)
+                        ? String.format(Locale.ROOT, "%d%s", Math.round(val), s.suffix)
+                        : String.format(Locale.ROOT, "%.2f%s", val, s.suffix);
+                ctx.drawTextWithShadow(this.textRenderer, valStr, trackX - this.textRenderer.getWidth(valStr) - 10, trackY - 2, accent);
+                VeloUiRenderer.drawSmoothRect(ctx, trackX, trackY, trackW, trackH, 3, 0xFF1E293B);
+                VeloUiRenderer.drawSmoothRect(ctx, trackX, trackY, Math.max(4, Math.round(trackW * pct)), trackH, 3, accent);
+                VeloUiRenderer.drawSmoothRect(ctx, trackX + Math.round(trackW * pct) - 5, trackY - 2, 10, 10, 5, 0xFFFFFFFF);
+            } else if (s.type == SettingType.MODE || s.type == SettingType.ACTION || s.type == SettingType.DANGER_ACTION) {
+                String label = s.modeGet.get();
+                int pillW = Math.max(76, this.textRenderer.getWidth(label) + 18);
+                int pillH = 20;
+                int pillX = s.rx + s.rw - pillW - 12;
+                int pillY = s.ry + (s.rh - pillH) / 2;
+                int pillFill = (s.type == SettingType.DANGER_ACTION)
+                        ? (hov ? 0xFFDC2626 : 0xCC45121B)
+                        : (hov ? primary : 0xCC162542);
+                int pillBorder = (s.type == SettingType.DANGER_ACTION) ? 0xFFEF4444 : accent;
+                VeloUiRenderer.drawSmoothPanel(ctx, pillX, pillY, pillW, pillH, 6, pillFill, pillBorder, false);
+                ctx.drawCenteredTextWithShadow(this.textRenderer, label, pillX + pillW / 2, pillY + 6, 0xFFFFFFFF);
             }
         }
 
-        super.render(context, mouseX, mouseY, delta);
+        ctx.disableScissor();
     }
 
     @Override
     public boolean mouseClicked(Click click, boolean doubled) {
-        double mouseX = click.x(), mouseY = click.y();
+        double mx = click.x(), my = click.y();
 
-        if (click.button() == 0) {
-            int closeX = winX + winW - 22, closeY = winY + 8;
-            if (mouseX >= closeX && mouseX <= closeX + 16 && mouseY >= closeY && mouseY <= closeY + 20) {
-                if (this.client != null) this.client.setScreen(this.parent);
+        // Stäng-knapp
+        int closeX = winX + winW - 26, closeY = winY + 10;
+        if (click.button() == 0 && mx >= closeX && mx <= closeX + 18 && my >= closeY && my <= closeY + 20) {
+            if (this.client != null) this.client.setScreen(this.parent);
+            return true;
+        }
+
+        // Top Tabs
+        if (click.button() == 0 && my >= winY + 8 && my <= winY + 34) {
+            int curTabX = winX + 94;
+            for (TopTab tab : TopTab.values()) {
+                int tw = this.textRenderer.getWidth(tab.label);
+                if (mx >= curTabX - 6 && mx <= curTabX + tw + 6) {
+                    if (tab == TopTab.WAYPOINTS) {
+                        if (this.client != null) this.client.setScreen(new VeloWaypointScreen(this));
+                        return true;
+                    } else if (tab == TopTab.HUD) {
+                        if (this.client != null) this.client.setScreen(new VeloHudEditorScreen(this));
+                        return true;
+                    }
+                    activeTopTab = tab;
+                    inspectingModule = null;
+                    targetScroll = currentScroll = 0f;
+                    return true;
+                }
+                curTabX += tw + 20;
+            }
+        }
+
+        // Modul-inställningsvy
+        if (inspectingModule != null) {
+            int bx = winX + 14, by = winY + 48;
+            if (click.button() == 0 && mx >= bx && mx <= bx + 74 && my >= by && my <= by + 20) {
+                inspectingModule = null;
+                targetScroll = currentScroll = 0f;
                 return true;
             }
+            if (handleSettingsClick(inspectingModule.settings, click)) return true;
+            return super.mouseClicked(click, doubled);
+        }
 
-            Category[] categories = Category.values();
-            int catStartY = winY + 46, catH = 26;
-            for (int i = 0; i < categories.length; i++) {
-                int cy = catStartY + i * (catH + 4);
-                int cx = winX + 8, cw = sidebarW - 16;
-                if (mouseX >= cx && mouseX <= cx + cw && mouseY >= cy && mouseY <= cy + catH) {
-                    selectedCategory = categories[i];
-                    scrollOffset = 0;
+        // Global Settings tab
+        if (activeTopTab == TopTab.SETTINGS) {
+            if (handleSettingsClick(globalSettings, click)) return true;
+            return super.mouseClicked(click, doubled);
+        }
+
+        // MODS tab: Kategori-pills + Reset ESP Blocks i Finder
+        if (activeTopTab == TopTab.MODS && click.button() == 0) {
+            int px = winX + 14;
+            int py = winY + 46;
+            for (ModCategory cat : ModCategory.values()) {
+                int pw = this.textRenderer.getWidth(cat.label) + 16;
+                if (mx >= px && mx <= px + pw && my >= py && my <= py + 18) {
+                    activeCategory = cat;
+                    targetScroll = currentScroll = 0f;
                     if (searchField != null) searchField.setText("");
                     return true;
                 }
+                px += pw + 6;
             }
 
-            List<SettingRow> visibleRows = getFilteredRows();
-            updateRowLayout(visibleRows);
+            if (activeCategory == ModCategory.FINDER) {
+                int rw = 94, rx = winX + winW - rw - 14;
+                if (mx >= rx && mx <= rx + rw && my >= py && my <= py + 18) {
+                    VeloWorldFeatures.selectedEspBlocks.clear();
+                    VeloWorldFeatures.blockEspEnabled = false;
+                    return true;
+                }
+            }
+        }
 
-            for (SettingRow row : visibleRows) {
-                if (!row.visibleOnScreen) continue;
-                if (mouseX >= row.rowX && mouseX <= row.rowX + row.rowW && mouseY >= row.rowY && mouseY <= row.rowY + row.rowH) {
+        // MODS tab: Kortklick (Vänsterklick = toggle / kugghjul = inställningar, Högerklick = inställningar)
+        if (activeTopTab == TopTab.MODS) {
+            for (ModuleCard m : getFilteredModules()) {
+                if (!m.visible) continue;
+                if (mx >= m.cx && mx <= m.cx + m.cw && my >= m.cy && my <= m.cy + m.ch) {
                     if (searchField != null) searchField.setFocused(false);
-                    if (row.type == RowType.TOGGLE) {
-                        row.boolSetter.accept(!row.boolGetter.get());
-                        return true;
-                    } else if (row.type == RowType.MODE || row.type == RowType.ACTION) {
-                        row.action.run();
-                        return true;
-                    } else if (row.type == RowType.SLIDER) {
-                        draggingSlider = row;
-                        updateSlider(row, mouseX);
+                    if (!m.settings.isEmpty()) {
+                        int gx = m.cx + m.cw - 22, gy = m.cy + 6;
+                        if (click.button() == 1 || (click.button() == 0 && mx >= gx && mx <= gx + 16 && my >= gy && my <= gy + 16)) {
+                            inspectingModule = m;
+                            targetScroll = currentScroll = 0f;
+                            return true;
+                        }
+                    }
+                    if (click.button() == 0) {
+                        m.setter.accept(!m.getter.get());
                         return true;
                     }
                 }
             }
         }
+
         return super.mouseClicked(click, doubled);
+    }
+
+    private boolean handleSettingsClick(List<ModSetting> settings, Click click) {
+        if (click.button() != 0) return false;
+        double mx = click.x(), my = click.y();
+        for (ModSetting s : settings) {
+            if (!s.visible) continue;
+            if (mx >= s.rx && mx <= s.rx + s.rw && my >= s.ry && my <= s.ry + s.rh) {
+                if (s.type == SettingType.TOGGLE) {
+                    s.boolSet.accept(!s.boolGet.get());
+                    return true;
+                } else if (s.type == SettingType.MODE || s.type == SettingType.ACTION || s.type == SettingType.DANGER_ACTION) {
+                    s.action.run();
+                    return true;
+                } else if (s.type == SettingType.SLIDER) {
+                    draggingSlider = s;
+                    updateSlider(s, mx);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override
@@ -468,15 +785,15 @@ public class VeloMenuScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        scrollOffset -= (int) (verticalAmount * 20);
+        targetScroll -= (float) (verticalAmount * 38.0);
         return true;
     }
 
-    private void updateSlider(SettingRow row, double mouseX) {
-        int trackW = 84;
-        int trackX = row.rowX + row.rowW - trackW - 12;
+    private void updateSlider(ModSetting s, double mouseX) {
+        int trackW = 110;
+        int trackX = s.rx + s.rw - trackW - 14;
         float pct = MathHelper.clamp((float) (mouseX - trackX) / (float) trackW, 0.0f, 1.0f);
-        row.floatSetter.accept(row.minVal + pct * (row.maxVal - row.minVal));
+        s.floatSet.accept(s.minVal + pct * (s.maxVal - s.minVal));
     }
 
     @Override

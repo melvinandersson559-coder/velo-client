@@ -30,6 +30,9 @@ public class VeloClient implements ClientModInitializer {
     public static boolean totemWarning = true;
     public static boolean hudEnabled = true;
     public static boolean toggleSprint = true;
+    public static boolean noHurtCam = true;
+    public static boolean lowFire = true;
+    public static float lowFireOffset = 0.34f;
 
     // ViewModel & Slow Swing
     public static boolean slowSwing = true;
@@ -121,6 +124,7 @@ public class VeloClient implements ClientModInitializer {
 
         HudElementRegistry.addLast(Identifier.of(MOD_ID, "velo_hud"), (context, tickCounter) -> {
             MinecraftClient mc = MinecraftClient.getInstance();
+            VeloUtilityModules.updateSmoothZoomFrame(mc, zoomKey.isPressed());
             VeloWorldFeatures.renderThroughWallGlow(context, mc);
             if (hudEnabled && mc.player != null && !mc.options.hudHidden && !(mc.currentScreen instanceof VeloHudEditorScreen)) {
                 renderModularHud(context, mc);
@@ -147,7 +151,7 @@ public class VeloClient implements ClientModInitializer {
 
             VeloUiRenderer.drawSmoothPanel(ctx, x, y, 152, 44, 9, COLOR_BG, border, true);
             VeloUiRenderer.drawSmoothRect(ctx, x + 5, y + 8, 2, 28, 1, accent);
-            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§b2.1", x + 13, y + 7, accent);
+            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§b2.2", x + 13, y + 7, accent);
             ctx.drawTextWithShadow(mc.textRenderer, String.format(Locale.ROOT, "§7FPS §f%d  §7•  §f%.1f b/s", mc.getCurrentFps(), bps), x + 13, y + 20, 0xFFE2E8F0);
             ctx.drawTextWithShadow(mc.textRenderer, "§7H: §bHUD Editor  §7RShift: §bMenu", x + 13, y + 31, 0xFF94A3B8);
         }
@@ -272,6 +276,8 @@ public class VeloClient implements ClientModInitializer {
     private List<String> getActiveModuleNames() {
         List<String> list = new ArrayList<>();
         if (VeloUtilityModules.fullbright) list.add("Fullbright");
+        if (noHurtCam) list.add("No Hurt Cam");
+        if (lowFire) list.add("Low Fire");
         if (VeloWorldFeatures.baseFinderEnabled) list.add("Base Finder");
         if (VeloWorldFeatures.blockEspEnabled) list.add("Block ESP");
         if (VeloWorldFeatures.spawnerFinderEnabled) list.add("Spawner Finder");
