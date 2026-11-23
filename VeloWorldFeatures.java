@@ -96,20 +96,18 @@ public class VeloWorldFeatures {
     public static boolean logoutSpots = false;
 
     public static class BlockCluster {
-        public final int minX, minY, minZ;
-        public final int maxX, maxY, maxZ;
+        public final double centerX, centerY, centerZ;
         public final int count;
         public final String label;
+        public final List<BlockPos> blocks;
 
-        public BlockCluster(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, int count, String label) {
-            this.minX = minX;
-            this.minY = minY;
-            this.minZ = minZ;
-            this.maxX = maxX;
-            this.maxY = maxY;
-            this.maxZ = maxZ;
+        public BlockCluster(double centerX, double centerY, double centerZ, int count, String label, List<BlockPos> blocks) {
+            this.centerX = centerX;
+            this.centerY = centerY;
+            this.centerZ = centerZ;
             this.count = count;
             this.label = label;
+            this.blocks = blocks;
         }
     }
 
@@ -350,8 +348,9 @@ public class VeloWorldFeatures {
 
             List<BlockPos> group = new ArrayList<>();
             group.add(positions.get(i));
-            int minX = positions.get(i).getX(), minY = positions.get(i).getY(), minZ = positions.get(i).getZ();
-            int maxX = minX, maxY = minY, maxZ = minZ;
+            double sumX = positions.get(i).getX() + 0.5;
+            double sumY = positions.get(i).getY() + 0.5;
+            double sumZ = positions.get(i).getZ() + 0.5;
 
             for (int q = 0; q < group.size(); q++) {
                 BlockPos cur = group.get(q);
@@ -361,19 +360,20 @@ public class VeloWorldFeatures {
                     if (cur.getSquaredDistance(cand) <= maxDistSq) {
                         visited[j] = true;
                         group.add(cand);
-                        if (cand.getX() < minX) minX = cand.getX();
-                        if (cand.getY() < minY) minY = cand.getY();
-                        if (cand.getZ() < minZ) minZ = cand.getZ();
-                        if (cand.getX() > maxX) maxX = cand.getX();
-                        if (cand.getY() > maxY) maxY = cand.getY();
-                        if (cand.getZ() > maxZ) maxZ = cand.getZ();
+                        sumX += cand.getX() + 0.5;
+                        sumY += cand.getY() + 0.5;
+                        sumZ += cand.getZ() + 0.5;
                     }
                 }
             }
 
             if (group.size() >= minClusterSize) {
-                result.add(new BlockCluster(minX, minY, minZ, maxX, maxY, maxZ, group.size(),
-                        "§l" + prefix + " §r§7(" + group.size() + ")"));
+                double cx = sumX / group.size();
+                double cy = sumY / group.size();
+                double cz = sumZ / group.size();
+                List<BlockPos> capped = group.size() > 140 ? new ArrayList<>(group.subList(0, 140)) : group;
+                result.add(new BlockCluster(cx, cy, cz, group.size(),
+                        "§l" + prefix + " §r§7(" + group.size() + ")", capped));
             }
         }
         return result;
@@ -404,7 +404,7 @@ public class VeloWorldFeatures {
                             || b instanceof ComparatorBlock || b instanceof RedstoneWireBlock
                             || b == Blocks.REDSTONE_BLOCK || b == Blocks.SLIME_BLOCK || b == Blocks.HONEY_BLOCK) {
                         count++;
-                        if (outPositions.size() < 40) outPositions.add(pos.toImmutable());
+                        if (outPositions.size() < 90) outPositions.add(pos.toImmutable());
                         if (count >= 120) return count;
                     }
                 }
@@ -453,14 +453,16 @@ public class VeloWorldFeatures {
 
         if (baseFinderEnabled) {
             for (BlockCluster c : baseClusters) {
-                VertexRendering.drawOutline(matrices, lineConsumer,
-                        VoxelShapes.cuboid(0, 0, 0, c.maxX - c.minX + 1.0, c.maxY - c.minY + 1.0, c.maxZ - c.minZ + 1.0),
-                        c.minX - cam.x, c.minY - cam.y, c.minZ - cam.z, 0xFFFFB020, 2.5f);
+                for (BlockPos pos : c.blocks) {
+                    VertexRendering.drawOutline(matrices, lineConsumer, VoxelShapes.fullCube(),
+                            pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z, 0xFFFFB020, 2.5f);
+                }
             }
             for (BlockCluster c : redstoneClusters) {
-                VertexRendering.drawOutline(matrices, lineConsumer,
-                        VoxelShapes.cuboid(0, 0, 0, c.maxX - c.minX + 1.0, c.maxY - c.minY + 1.0, c.maxZ - c.minZ + 1.0),
-                        c.minX - cam.x, c.minY - cam.y, c.minZ - cam.z, 0xFFFF4D6D, 2.5f);
+                for (BlockPos pos : c.blocks) {
+                    VertexRendering.drawOutline(matrices, lineConsumer, VoxelShapes.fullCube(),
+                            pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z, 0xFFFF4D6D, 2.5f);
+                }
             }
         }
 
@@ -517,29 +519,39 @@ public class VeloWorldFeatures {
         double tanHalfFov = Math.tan(Math.toRadians(fov * 0.5));
         double aspect = (double) sw / (double) sh;
 
-        // Block ESP / Base Finder / Spawner Finder
+        // Block ESP: Fast 3D glowing outline runt varje valt block
         if (blockEspEnabled) {
             int color = VeloClient.getAccentColor();
             for (BlockPos pos : espFoundBlocks) {
-                drawModernEspBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, color, null,
+                draw3DGlowingBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, color, null,
                         camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
             }
         }
+
+        // Base Finder & Redstone Farm: Fast 3D glowing outline runt blocken + ren kluster-etikett
         if (baseFinderEnabled) {
             for (BlockCluster c : baseClusters) {
-                drawModernEspBox(ctx, c.minX, c.minY, c.minZ,
-                        c.maxX - c.minX + 1.0, c.maxY - c.minY + 1.0, c.maxZ - c.minZ + 1.0,
-                        0xFFFFB020, c.label, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
+                for (BlockPos pos : c.blocks) {
+                    draw3DGlowingBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, 0xFFFFB020, null,
+                            camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
+                }
+                drawClusterFloatingTag(ctx, c.centerX, c.centerY + 1.1, c.centerZ, c.label, 0xFFFFB020,
+                        camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, mc);
             }
             for (BlockCluster c : redstoneClusters) {
-                drawModernEspBox(ctx, c.minX, c.minY, c.minZ,
-                        c.maxX - c.minX + 1.0, c.maxY - c.minY + 1.0, c.maxZ - c.minZ + 1.0,
-                        0xFFFF4D6D, c.label, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
+                for (BlockPos pos : c.blocks) {
+                    draw3DGlowingBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, 0xFFFF4D6D, null,
+                            camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
+                }
+                drawClusterFloatingTag(ctx, c.centerX, c.centerY + 1.1, c.centerZ, c.label, 0xFFFF4D6D,
+                        camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, mc);
             }
         }
+
+        // Spawner Finder: Fast 3D glowing outline runt spawners
         if (spawnerFinderEnabled) {
             for (BlockPos pos : spawnerFoundBlocks) {
-                drawModernEspBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, 0xFFE040FB, null,
+                draw3DGlowingBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, 0xFFE040FB, null,
                         camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
             }
         }
@@ -551,15 +563,15 @@ public class VeloWorldFeatures {
                 if (e instanceof PlayerEntity pe && (playerEsp || tracers)) {
                     int dist = (int) Math.round(mc.player.distanceTo(pe));
                     String tag = playerEsp ? (pe.getName().getString() + " §c" + (int) Math.ceil(pe.getHealth()) + "❤ §7" + dist + "m") : null;
-                    drawModernEspBox(ctx, pe.getX() - 0.35, pe.getY(), pe.getZ() - 0.35, 0.7, pe.getHeight(), 0.7,
+                    draw3DGlowingBox(ctx, pe.getX() - 0.35, pe.getY(), pe.getZ() - 0.35, 0.7, pe.getHeight(), 0.7,
                             0xFF38BDF8, tag, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, tracers, mc);
                 } else if (e instanceof HostileEntity he && mobEsp) {
                     String tag = he.getName().getString() + " §c" + (int) Math.ceil(he.getHealth()) + "❤";
-                    drawModernEspBox(ctx, he.getX() - 0.35, he.getY(), he.getZ() - 0.35, 0.7, he.getHeight(), 0.7,
+                    draw3DGlowingBox(ctx, he.getX() - 0.35, he.getY(), he.getZ() - 0.35, 0.7, he.getHeight(), 0.7,
                             0xFFFF4D6D, tag, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
                 } else if (e instanceof ItemEntity ie && itemEsp) {
                     String tag = ie.getStack().getName().getString() + (ie.getStack().getCount() > 1 ? " x" + ie.getStack().getCount() : "");
-                    drawModernEspBox(ctx, ie.getX() - 0.2, ie.getY(), ie.getZ() - 0.2, 0.4, 0.4, 0.4,
+                    draw3DGlowingBox(ctx, ie.getX() - 0.2, ie.getY(), ie.getZ() - 0.2, 0.4, 0.4, 0.4,
                             0xFF34D399, tag, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
                 }
             }
@@ -576,7 +588,7 @@ public class VeloWorldFeatures {
                 int lw = mc.textRenderer.getWidth(label) + 12;
                 int lx = (int) screen[0] - lw / 2;
                 int ly = (int) screen[1] - 10;
-                VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 16, 6, 0xCC070E1D, wp.color, false);
+                VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 16, 7, 0xCC070E1D, wp.color, false);
                 ctx.drawTextWithShadow(mc.textRenderer, label, lx + 6, ly + 4, 0xFFFFFFFF);
             }
         }
@@ -590,23 +602,40 @@ public class VeloWorldFeatures {
                 int lw = mc.textRenderer.getWidth(label) + 10;
                 int lx = (int) screen[0] - lw / 2;
                 int ly = (int) screen[1] - 8;
-                VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 15, 5, 0xCC180A12, 0xFFFF4D6D, false);
+                VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 15, 6, 0xCC180A12, 0xFFFF4D6D, false);
                 ctx.drawTextWithShadow(mc.textRenderer, label, lx + 5, ly + 4, 0xFFFFFFFF);
             }
         }
 
-        // Breadcrumbs trail
+        // Breadcrumbs trail (anti-aliased mjuk linje)
         if (breadcrumbs && breadcrumbPoints.size() >= 2) {
             int accent = VeloClient.getAccentColor();
             double[] prev = null;
             for (Vec3d pt : breadcrumbPoints) {
                 double[] cur = projectPoint(pt.x, pt.y, pt.z, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
                 if (prev != null && cur != null) {
-                    draw2DLine(ctx, (int) prev[0], (int) prev[1], (int) cur[0], (int) cur[1], accent);
+                    VeloUiRenderer.drawSmoothLine(ctx, (float) prev[0], (float) prev[1], (float) cur[0], (float) cur[1], 2.0f, accent);
                 }
                 prev = cur;
             }
         }
+    }
+
+    private static void drawClusterFloatingTag(
+            DrawContext ctx, double wx, double wy, double wz, String label, int argb, Vec3d cam,
+            double fx, double fy, double fz, double rx, double ry, double rz, double ux, double uy, double uz,
+            double tanHalfFov, double aspect, int sw, int sh, MinecraftClient mc
+    ) {
+        double[] screen = projectPoint(wx, wy, wz, cam, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+        if (screen == null) return;
+        int dist = (int) Math.round(Math.sqrt(cam.squaredDistanceTo(wx, wy, wz)));
+        String fullLabel = label + " §8• §f" + dist + "m";
+        int rgb = argb & 0x00FFFFFF;
+        int lw = mc.textRenderer.getWidth(fullLabel) + 12;
+        int lx = (int) screen[0] - lw / 2;
+        int ly = (int) screen[1] - 8;
+        VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 15, 7, 0xD80A0F1A, (0xCC << 24) | rgb, true);
+        ctx.drawTextWithShadow(mc.textRenderer, fullLabel, lx + 6, ly + 4, 0xFFFFFFFF);
     }
 
     private static double[] projectPoint(
@@ -627,23 +656,21 @@ public class VeloWorldFeatures {
         double ndcY = camY / (camZ * tanHalfFov);
         double sx = (ndcX + 1.0) * 0.5 * sw;
         double sy = (1.0 - ndcY) * 0.5 * sh;
-        if (sx < -60 || sx > sw + 60 || sy < -60 || sy > sh + 60) return null;
+        if (sx < -80 || sx > sw + 80 || sy < -80 || sy > sh + 80) return null;
         return new double[]{sx, sy};
     }
 
-    private static void draw2DLine(DrawContext ctx, int x0, int y0, int x1, int y1, int color) {
-        int dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
-        int steps = Math.max(dx, dy);
-        if (steps <= 0 || steps > 1200) return;
-        int stride = Math.max(1, steps / 90);
-        for (int i = 0; i <= steps; i += stride) {
-            int x = x0 + (x1 - x0) * i / steps;
-            int y = y0 + (y1 - y0) * i / steps;
-            ctx.fill(x, y, x + 2, y + 2, color);
-        }
-    }
+    private static final int[][] CUBE_EDGES = {
+            {0, 1}, {1, 3}, {3, 2}, {2, 0}, // X=0 face
+            {4, 5}, {5, 7}, {7, 6}, {6, 4}, // X=1 face
+            {0, 4}, {1, 5}, {2, 6}, {3, 7}  // connecting X edges
+    };
 
-    private static void drawModernEspBox(
+    /**
+     * Ritar en FAST 3D glowing outline runt alla 12 kanter av ett block eller hitbox i äkta 3D-perspektiv
+     * med near-plane klippning och mjuk anti-aliased dubbel-glow (ingen ful 2D-fyrkant!).
+     */
+    private static void draw3DGlowingBox(
             DrawContext ctx, double bx, double by, double bz, double bw, double bh, double bd,
             int argb, String label, Vec3d cam,
             double fx, double fy, double fz,
@@ -651,9 +678,12 @@ public class VeloWorldFeatures {
             double ux, double uy, double uz,
             double tanHalfFov, double aspect, int sw, int sh, boolean drawTracer, MinecraftClient mc
     ) {
-        double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY;
-        double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY;
-        int visibleCorners = 0;
+        double[] cX = new double[8];
+        double[] cY = new double[8];
+        double[] cZ = new double[8];
+        int idx = 0;
+        double minSx = Double.POSITIVE_INFINITY, minSy = Double.POSITIVE_INFINITY, maxSx = Double.NEGATIVE_INFINITY;
+        int valid = 0;
 
         for (int dx = 0; dx <= 1; dx++) {
             for (int dy = 0; dy <= 1; dy++) {
@@ -661,58 +691,78 @@ public class VeloWorldFeatures {
                     double wx = bx + dx * bw - cam.x;
                     double wy = by + dy * bh - cam.y;
                     double wz = bz + dz * bd - cam.z;
-                    double camZ = wx * fx + wy * fy + wz * fz;
-                    if (camZ <= 0.15) continue;
-                    double camX = wx * rx + wy * ry + wz * rz;
-                    double camY = wx * ux + wy * uy + wz * uz;
-                    double sx = (camX / (camZ * tanHalfFov * aspect) + 1.0) * 0.5 * sw;
-                    double sy = (1.0 - camY / (camZ * tanHalfFov)) * 0.5 * sh;
-                    if (sx < minX) minX = sx;
-                    if (sy < minY) minY = sy;
-                    if (sx > maxX) maxX = sx;
-                    if (sy > maxY) maxY = sy;
-                    visibleCorners++;
+                    double cz = wx * fx + wy * fy + wz * fz;
+                    double cx = wx * rx + wy * ry + wz * rz;
+                    double cy = wx * ux + wy * uy + wz * uz;
+                    cX[idx] = cx;
+                    cY[idx] = cy;
+                    cZ[idx] = cz;
+                    idx++;
+
+                    if (cz > 0.15) {
+                        double sx = (cx / (cz * tanHalfFov * aspect) + 1.0) * 0.5 * sw;
+                        double sy = (1.0 - cy / (cz * tanHalfFov)) * 0.5 * sh;
+                        if (sx < minSx) minSx = sx;
+                        if (sx > maxSx) maxSx = sx;
+                        if (sy < minSy) minSy = sy;
+                        valid++;
+                    }
                 }
             }
         }
 
-        if (visibleCorners < 2) return;
-        if (maxX < 0 || minX > sw || maxY < 0 || minY > sh) return;
-
-        int x1 = Math.max(0, (int) Math.floor(minX));
-        int y1 = Math.max(0, (int) Math.floor(minY));
-        int x2 = Math.min(sw, (int) Math.ceil(maxX));
-        int y2 = Math.min(sh, (int) Math.ceil(maxY));
-        int w = x2 - x1, h = y2 - y1;
-        if (w < 3 || h < 3) return;
+        if (valid == 0) return;
+        if (maxSx < -40 || minSx > sw + 40) return;
 
         int rgb = argb & 0x00FFFFFF;
-        int softFill = (0x1A << 24) | rgb;
-        int faintBorder = (0x55 << 24) | rgb;
-        int brightCorner = (0xEE << 24) | rgb;
+        int outerGlow = (0x3A << 24) | rgb;
+        int coreOutline = (0xF2 << 24) | rgb;
+        double nearPlane = 0.15;
 
-        VeloUiRenderer.drawSmoothPanel(ctx, x1, y1, w, h, Math.min(4, Math.min(w, h) / 3), softFill, faintBorder, false);
+        for (int[] edge : CUBE_EDGES) {
+            int i0 = edge[0], i1 = edge[1];
+            double x0 = cX[i0], y0 = cY[i0], z0 = cZ[i0];
+            double x1 = cX[i1], y1 = cY[i1], z1 = cZ[i1];
 
-        int cl = Math.max(3, Math.min(8, Math.min(w, h) / 3));
-        ctx.fill(x1, y1, x1 + cl, y1 + 1, brightCorner);
-        ctx.fill(x1, y1, x1 + 1, y1 + cl, brightCorner);
-        ctx.fill(x2 - cl, y1, x2, y1 + 1, brightCorner);
-        ctx.fill(x2 - 1, y1, x2, y1 + cl, brightCorner);
-        ctx.fill(x1, y2 - 1, x1 + cl, y2, brightCorner);
-        ctx.fill(x1, y2 - cl, x1 + 1, y2, brightCorner);
-        ctx.fill(x2 - cl, y2 - 1, x2, y2, brightCorner);
-        ctx.fill(x2 - 1, y2 - cl, x2, y2, brightCorner);
+            if (z0 <= nearPlane && z1 <= nearPlane) continue;
+            if (z0 <= nearPlane) {
+                double t = (nearPlane - z0) / (z1 - z0);
+                x0 += (x1 - x0) * t;
+                y0 += (y1 - y0) * t;
+                z0 = nearPlane;
+            } else if (z1 <= nearPlane) {
+                double t = (nearPlane - z1) / (z0 - z1);
+                x1 += (x0 - x1) * t;
+                y1 += (y0 - y1) * t;
+                z1 = nearPlane;
+            }
 
-        if (drawTracer) {
-            draw2DLine(ctx, sw / 2, sh / 2, (x1 + x2) / 2, (y1 + y2) / 2, (0xAA << 24) | rgb);
+            float sx0 = (float) ((x0 / (z0 * tanHalfFov * aspect) + 1.0) * 0.5 * sw);
+            float sy0 = (float) ((1.0 - y0 / (z0 * tanHalfFov)) * 0.5 * sh);
+            float sx1 = (float) ((x1 / (z1 * tanHalfFov * aspect) + 1.0) * 0.5 * sw);
+            float sy1 = (float) ((1.0 - y1 / (z1 * tanHalfFov)) * 0.5 * sh);
+
+            if ((sx0 < -20 && sx1 < -20) || (sx0 > sw + 20 && sx1 > sw + 20)) continue;
+            if ((sy0 < -20 && sy1 < -20) || (sy0 > sh + 20 && sy1 > sh + 20)) continue;
+
+            // 1. Mjuk glödande aura runt linjen
+            VeloUiRenderer.drawSmoothLine(ctx, sx0, sy0, sx1, sy1, 3.0f, outerGlow);
+            // 2. Fast, skarp anti-aliased glowing 3D-outline
+            VeloUiRenderer.drawSmoothLine(ctx, sx0, sy0, sx1, sy1, 1.3f, coreOutline);
         }
 
-        if (label != null) {
-            int lw = mc.textRenderer.getWidth(label) + 8;
-            int lx = (x1 + x2 - lw) / 2;
-            int ly = Math.max(2, y1 - 14);
-            VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 12, 4, 0xCC070E1D, (0x99 << 24) | rgb, false);
-            ctx.drawTextWithShadow(mc.textRenderer, label, lx + 4, ly + 2, 0xFFFFFFFF);
+        if (drawTracer && valid >= 2) {
+            float midX = (float) ((minSx + maxSx) * 0.5);
+            float midY = (float) (minSy + 10.0);
+            VeloUiRenderer.drawSmoothLine(ctx, sw / 2.0f, sh / 2.0f, midX, midY, 1.6f, (0xAA << 24) | rgb);
+        }
+
+        if (label != null && valid >= 2) {
+            int lw = mc.textRenderer.getWidth(label) + 10;
+            int lx = (int) Math.round((minSx + maxSx - lw) * 0.5);
+            int ly = Math.max(2, (int) Math.round(minSy) - 15);
+            VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 13, 6, 0xD4070E1D, (0xAA << 24) | rgb, false);
+            ctx.drawTextWithShadow(mc.textRenderer, label, lx + 5, ly + 3, 0xFFFFFFFF);
         }
     }
 

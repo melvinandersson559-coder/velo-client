@@ -29,6 +29,7 @@ public class VeloClient implements ClientModInitializer {
     // Combat, HUD & Movement
     public static boolean totemWarning = true;
     public static boolean hudEnabled = true;
+    public static boolean hotbarDurabilityHud = true;
     public static boolean toggleSprint = true;
     public static boolean noHurtCam = true;
     public static boolean lowFire = true;
@@ -168,7 +169,7 @@ public class VeloClient implements ClientModInitializer {
 
             VeloUiRenderer.drawSmoothPanel(ctx, x, y, 152, 44, 9, COLOR_BG, border, true);
             VeloUiRenderer.drawSmoothRect(ctx, x + 5, y + 8, 2, 28, 1, accent);
-            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§b3.0", x + 13, y + 7, accent);
+            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§b3.1", x + 13, y + 7, accent);
             ctx.drawTextWithShadow(mc.textRenderer, String.format(Locale.ROOT, "§7FPS §f%d  §7•  §f%.1f b/s", mc.getCurrentFps(), bps), x + 13, y + 20, 0xFFE2E8F0);
             ctx.drawTextWithShadow(mc.textRenderer, "§7H: §bHUD Editor  §7RShift: §bMenu", x + 13, y + 31, 0xFF94A3B8);
         }
@@ -213,28 +214,66 @@ public class VeloClient implements ClientModInitializer {
             }
         }
 
-        // 4. ARMOR & TOTEM COUNTER HUD
+        // 4. ARMOR, HOTBAR DURABILITY & TOTEM COUNTER HUD (i hörnet)
         if (d.armorHud.enabled) {
-            int x = MathHelper.clamp(d.armorHud.x, 4, sw - 132);
-            int y = MathHelper.clamp(d.armorHud.y, 4, sh - 38);
-            int totems = countTotems(mc);
-            VeloUiRenderer.drawSmoothPanel(ctx, x, y, 128, 30, 8, COLOR_BG, border, true);
-            EquipmentSlot[] slots = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
-            for (int i = 0; i < slots.length; i++) {
-                ItemStack armor = mc.player.getEquippedStack(slots[i]);
-                int ix = x + 6 + i * 20;
-                if (!armor.isEmpty()) {
-                    ctx.drawItem(armor, ix, y + 5);
-                    if (armor.isDamageable()) {
-                        float pct = 1.0f - (float) armor.getDamage() / Math.max(1, armor.getMaxDamage());
-                        int barCol = pct > 0.5f ? 0xFF34D399 : (pct > 0.25f ? 0xFFFBBF24 : 0xFFFF4D6D);
-                        ctx.fill(ix + 1, y + 23, ix + 15, y + 25, 0xFF1E293B);
-                        ctx.fill(ix + 1, y + 23, ix + 1 + Math.round(14 * pct), y + 25, barCol);
+            List<ItemStack> hotbarTools = new ArrayList<>();
+            if (hotbarDurabilityHud) {
+                for (int s = 0; s < 9; s++) {
+                    ItemStack st = mc.player.getInventory().getStack(s);
+                    if (!st.isEmpty() && st.isDamageable()) {
+                        hotbarTools.add(st);
                     }
                 }
             }
-            ctx.drawItem(new ItemStack(Items.TOTEM_OF_UNDYING), x + 90, y + 6);
-            ctx.drawTextWithShadow(mc.textRenderer, "§f" + totems, x + 108, y + 11, totems > 0 ? 0xFFFDE68A : 0xFF94A3B8);
+
+            int cols = Math.max(5, hotbarTools.size());
+            int panelW = Math.max(132, 12 + cols * 24);
+            int panelH = hotbarTools.isEmpty() ? 32 : 64;
+            int x = MathHelper.clamp(d.armorHud.x, 4, Math.max(4, sw - panelW - 4));
+            int y = MathHelper.clamp(d.armorHud.y, 4, Math.max(4, sh - panelH - 4));
+            int totems = countTotems(mc);
+
+            VeloUiRenderer.drawSmoothPanel(ctx, x, y, panelW, panelH, 9, COLOR_BG, border, true);
+
+            // Rad 1: Rustning + Totems
+            EquipmentSlot[] slots = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
+            for (int i = 0; i < slots.length; i++) {
+                ItemStack armor = mc.player.getEquippedStack(slots[i]);
+                int ix = x + 7 + i * 22;
+                if (!armor.isEmpty()) {
+                    ctx.drawItem(armor, ix, y + 4);
+                    if (armor.isDamageable()) {
+                        float pct = MathHelper.clamp(1.0f - (float) armor.getDamage() / Math.max(1, armor.getMaxDamage()), 0.0f, 1.0f);
+                        int barCol = pct > 0.5f ? 0xFF34D399 : (pct > 0.25f ? 0xFFFBBF24 : 0xFFFF4D6D);
+                        VeloUiRenderer.drawSmoothRect(ctx, ix + 1, y + 22, 14, 3, 2, 0xFF1E293B);
+                        VeloUiRenderer.drawSmoothRect(ctx, ix + 1, y + 22, Math.max(3, Math.round(14 * pct)), 3, 2, barCol);
+                    }
+                }
+            }
+            ctx.drawItem(new ItemStack(Items.TOTEM_OF_UNDYING), x + 97, y + 5);
+            ctx.drawTextWithShadow(mc.textRenderer, "§f" + totems, x + 115, y + 10, totems > 0 ? 0xFFFDE68A : 0xFF94A3B8);
+
+            // Rad 2: Durability på ALLA items i hotbaren
+            if (!hotbarTools.isEmpty()) {
+                VeloUiRenderer.drawSmoothRect(ctx, x + 8, y + 29, panelW - 16, 1, 1, 0x3394A3B8);
+                for (int i = 0; i < hotbarTools.size(); i++) {
+                    ItemStack tool = hotbarTools.get(i);
+                    int ix = x + 7 + i * 24;
+                    int iy = y + 32;
+                    ctx.drawItem(tool, ix + 2, iy);
+
+                    int maxD = Math.max(1, tool.getMaxDamage());
+                    int remD = Math.max(0, maxD - tool.getDamage());
+                    float pct = MathHelper.clamp((float) remD / (float) maxD, 0.0f, 1.0f);
+                    int barCol = pct > 0.5f ? 0xFF34D399 : (pct > 0.25f ? 0xFFFBBF24 : 0xFFFF4D6D);
+
+                    VeloUiRenderer.drawSmoothRect(ctx, ix + 1, iy + 17, 18, 3, 2, 0xFF1E293B);
+                    VeloUiRenderer.drawSmoothRect(ctx, ix + 1, iy + 17, Math.max(3, Math.round(18 * pct)), 3, 2, barCol);
+
+                    String pctText = Math.round(pct * 100.0f) + "%";
+                    ctx.drawCenteredTextWithShadow(mc.textRenderer, pctText, ix + 10, iy + 22, 0xFFCBD5E1);
+                }
+            }
         }
 
         // 5. INVENTORY VIEWER

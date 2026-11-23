@@ -312,6 +312,8 @@ public class VeloMenuScreen extends Screen {
         // --- GLOBAL SETTINGS TAB ---
         globalSettings.add(ModSetting.toggle("VELO HUD", "Visa/dölj hela HUD-systemet",
                 () -> VeloClient.hudEnabled, v -> VeloClient.hudEnabled = v));
+        globalSettings.add(ModSetting.toggle("Hotbar Durability HUD", "Visa durability på alla hotbar-items i hörnet",
+                () -> VeloClient.hotbarDurabilityHud, v -> VeloClient.hotbarDurabilityHud = v));
         globalSettings.add(ModSetting.mode("Accent Theme", "Byt blå färgton på hela clienten",
                 VeloClient::getThemeName, () -> VeloClient.blueThemeIndex = (VeloClient.blueThemeIndex + 1) % 3));
         globalSettings.add(ModSetting.action("Öppna HUD Editor (H)", "Dra & släpp alla 7 HUD-element fritt",

@@ -313,7 +313,7 @@ public class VeloTitleScreen extends Screen {
         }
 
         // Diskret versionstext längst ner till vänster
-        context.drawText(this.textRenderer, "VELO 3.0", 14, this.height - 18, 0xFF4B5563, false);
+        context.drawText(this.textRenderer, "VELO 3.1", 14, this.height - 18, 0xFF4B5563, false);
 
         super.render(context, mouseX, mouseY, delta);
     }
@@ -343,23 +343,11 @@ public class VeloTitleScreen extends Screen {
     }
 
     private void drawThickLine(DrawContext ctx, int x0, int y0, int x1, int y1, int color) {
-        int steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-        if (steps <= 0) return;
-        for (int i = 0; i <= steps; i++) {
-            int x = x0 + (x1 - x0) * i / steps;
-            int y = y0 + (y1 - y0) * i / steps;
-            ctx.fill(x - 1, y - 1, x + 1, y + 1, color);
-        }
+        VeloUiRenderer.drawSmoothLine(ctx, x0, y0, x1, y1, 2.2f, color);
     }
 
     private void drawThinLine(DrawContext ctx, int x0, int y0, int x1, int y1, int color) {
-        int steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
-        if (steps <= 0) return;
-        for (int i = 0; i <= steps; i++) {
-            int x = x0 + (x1 - x0) * i / steps;
-            int y = y0 + (y1 - y0) * i / steps;
-            ctx.fill(x, y, x + 1, y + 1, color);
-        }
+        VeloUiRenderer.drawSmoothLine(ctx, x0, y0, x1, y1, 1.4f, color);
     }
 
     private void renderTrue3DPlayer(DrawContext ctx, int centerX, int centerY, String playerName, float angleDeg) {

@@ -3,7 +3,7 @@
   "id": "velocli",
   "version": "${version}",
   "name": "VELO Client",
-  "description": "VELO Client 3.0.0 Minimal - Drag & Drop HUD Editor, Fullbright, Advanced ViewModel, ChestCleaner, ChestStealer, Waypoints, FreeLook, Zoom, Tracers, Entity/Item/Block ESP, Base & Spawner Finder.",
+  "description": "VELO Client 3.1.0 Smooth - Drag & Drop HUD Editor, Fullbright, Advanced ViewModel, ChestCleaner, ChestStealer, Waypoints, FreeLook, Zoom, Tracers, Entity/Item/Block ESP, Base & Spawner Finder.",
   "authors": ["VELO"],
   "environment": "client",
   "entrypoints": {
