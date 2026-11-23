@@ -186,7 +186,7 @@ public class VeloTitleScreen extends Screen {
 
         // Centrerad VELO CLIENT-rubrik
         context.drawCenteredTextWithShadow(this.textRenderer, "§b§lVELO CLIENT", cx, cy - 82, accent);
-        context.drawCenteredTextWithShadow(this.textRenderer, "§7v1.8.0  •  Clean Edition", cx, cy - 68, 0xFF94A3B8);
+        context.drawCenteredTextWithShadow(this.textRenderer, "§7v1.8.1  •  Clean Edition", cx, cy - 68, 0xFF94A3B8);
 
         // Favoritserver-panel uppe till höger
         int panelW = 196;

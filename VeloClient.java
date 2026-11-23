@@ -25,9 +25,10 @@ public class VeloClient implements ClientModInitializer {
     public static boolean slowSwing = true;
     public static int swingDuration = 16; // 6 (normal) till 30 (långsam)
     public static boolean slimHand = true;
-    public static float handScale = 0.65f;
-    public static float handOffsetX = 0.05f;
-    public static float handOffsetY = -0.04f;
+    public static float handScale = 0.56f;
+    public static float handOffsetX = 0.10f;
+    public static float handOffsetY = -0.08f;
+    public static float handOffsetZ = -0.18f;
 
     // Blått färgtema (0 = Electric Blue, 1 = Ice Cyan, 2 = Royal Cobalt)
     public static int blueThemeIndex = 0;
@@ -130,7 +131,7 @@ public class VeloClient implements ClientModInitializer {
 
         int height = 14 + (lines * lineHeight);
 
-        VeloUiRenderer.drawSmoothPanel(context, x, y, width, height, COLOR_BG, accent);
+        VeloUiRenderer.drawSmoothPanel(context, x, y, width, height, 8, 0xCC070F1F, (0xAA << 24) | (accent & 0x00FFFFFF), true);
 
         int textY = y + 8;
         context.drawTextWithShadow(client.textRenderer, "§lVELO §r§bCLIENT", x + 10, textY, accent);

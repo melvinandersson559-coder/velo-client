@@ -165,12 +165,14 @@ public class VeloMenuScreen extends Screen {
                 6f, 30f, "", () -> (float) VeloClient.swingDuration, v -> VeloClient.swingDuration = Math.round(v)));
         allRows.add(SettingRow.toggle(Category.HAND, "Slim Hand", "Gör handen smalare och renare",
                 () -> VeloClient.slimHand, v -> VeloClient.slimHand = v));
-        allRows.add(SettingRow.slider(Category.HAND, "Hand Scale", "Storlek på hand/vapen",
-                0.40f, 1.00f, "", () -> VeloClient.handScale, v -> VeloClient.handScale = v));
+        allRows.add(SettingRow.slider(Category.HAND, "Hand Scale", "Storlek på hand & vapen",
+                0.30f, 1.00f, "", () -> VeloClient.handScale, v -> VeloClient.handScale = v));
         allRows.add(SettingRow.slider(Category.HAND, "Hand X-Offset", "Flytta i sidled",
-                -0.25f, 0.25f, "", () -> VeloClient.handOffsetX, v -> VeloClient.handOffsetX = v));
+                -0.30f, 0.35f, "", () -> VeloClient.handOffsetX, v -> VeloClient.handOffsetX = v));
         allRows.add(SettingRow.slider(Category.HAND, "Hand Y-Offset", "Flytta upp/ner",
-                -0.25f, 0.25f, "", () -> VeloClient.handOffsetY, v -> VeloClient.handOffsetY = v));
+                -0.35f, 0.25f, "", () -> VeloClient.handOffsetY, v -> VeloClient.handOffsetY = v));
+        allRows.add(SettingRow.slider(Category.HAND, "Hand Z-Offset", "Avstånd från kameran",
+                -0.45f, 0.20f, "", () -> VeloClient.handOffsetZ, v -> VeloClient.handOffsetZ = v));
 
         // Visuals
         allRows.add(SettingRow.toggle(Category.VISUALS, "VELO HUD", "Visar blå VELO-panel i hörnet",
@@ -252,12 +254,12 @@ public class VeloMenuScreen extends Screen {
         int accent = VeloClient.getAccentColor();
 
         // Anti-aliased modernt huvudfönster
-        VeloUiRenderer.drawSmoothPanel(context, winX, winY, winW, winH, 0xF20B1324, 0xFF1E3A6E);
+        VeloUiRenderer.drawSmoothPanel(context, winX, winY, winW, winH, 10, 0xF0081020, 0xBB2563EB, true);
         VeloUiRenderer.drawSmoothRect(context, winX + 1, winY + 1, sidebarW - 1, winH - 2, 0xF2070D1B);
         context.fill(winX + sidebarW, winY + 2, winX + sidebarW + 1, winY + winH - 2, 0xFF1B2B4B);
 
         context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", winX + 16, winY + 16, accent);
-        context.drawTextWithShadow(this.textRenderer, "§7Clean v1.8", winX + 16, winY + 28, 0xFF64748B);
+        context.drawTextWithShadow(this.textRenderer, "§7Clean v1.8.1", winX + 16, winY + 28, 0xFF64748B);
 
         // Sidopanelens kategorier
         Category[] categories = Category.values();
@@ -313,10 +315,10 @@ public class VeloMenuScreen extends Screen {
                 int swX = row.rowX + row.rowW - swW - 10;
                 int swY = row.rowY + (row.rowH - swH) / 2;
                 int swBg = VeloUiRenderer.lerpColor(0xFF1E293B, primary, row.toggleAnim);
-                VeloUiRenderer.drawSmoothRect(context, swX, swY, swW, swH, swBg);
+                VeloUiRenderer.drawSmoothRect(context, swX, swY, swW, swH, 8, swBg);
 
                 int knobX = swX + 2 + (int) ((swW - 16) * row.toggleAnim);
-                VeloUiRenderer.drawSmoothRect(context, knobX, swY + 2, 12, 12, 0xFFFFFFFF);
+                VeloUiRenderer.drawSmoothRect(context, knobX, swY + 2, 12, 12, 6, 0xFFFFFFFF);
             } else if (row.type == RowType.SLIDER) {
                 float val = row.floatGetter.get();
                 float pct = MathHelper.clamp((val - row.minVal) / (row.maxVal - row.minVal), 0f, 1f);
@@ -328,10 +330,10 @@ public class VeloMenuScreen extends Screen {
                         ? String.format(Locale.ROOT, "%d%s", Math.round(val), row.suffix)
                         : String.format(Locale.ROOT, "%.2f%s", val, row.suffix);
                 context.drawTextWithShadow(this.textRenderer, valStr, trackX - this.textRenderer.getWidth(valStr) - 8, trackY - 2, accent);
-                VeloUiRenderer.drawSmoothRect(context, trackX, trackY, trackW, trackH, 0xFF1E293B);
+                VeloUiRenderer.drawSmoothRect(context, trackX, trackY, trackW, trackH, 3, 0xFF1E293B);
                 int fillW = Math.max(4, (int) (trackW * pct));
-                VeloUiRenderer.drawSmoothRect(context, trackX, trackY, fillW, trackH, accent);
-                VeloUiRenderer.drawSmoothRect(context, trackX + (int) (trackW * pct) - 4, trackY - 2, 8, 10, 0xFFFFFFFF);
+                VeloUiRenderer.drawSmoothRect(context, trackX, trackY, fillW, trackH, 3, accent);
+                VeloUiRenderer.drawSmoothRect(context, trackX + (int) (trackW * pct) - 5, trackY - 2, 10, 10, 5, 0xFFFFFFFF);
             } else if (row.type == RowType.MODE || row.type == RowType.ACTION) {
                 String modeVal = row.modeGetter.get();
                 int pillW = this.textRenderer.getWidth(modeVal) + 16;
