@@ -3,7 +3,7 @@
   "id": "velocli",
   "version": "${version}",
   "name": "VELO Client",
-  "description": "VELO Client 1.7.0 - Clean Smooth UI, ClickGUI, Block ESP, Base Finder, Spawner Finder, Freecam, Slim Hand och HUD.",
+  "description": "VELO Client 1.8.0 - Anti-aliased Clean Blue UI, Smooth 3D Title Screen, Glowing Underground Base/Spawner Finder, All-Blocks ESP, Freecam & Slow Swing.",
   "authors": ["VELO"],
   "environment": "client",
   "entrypoints": {

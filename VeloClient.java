@@ -15,13 +15,15 @@ import org.lwjgl.glfw.GLFW;
 public class VeloClient implements ClientModInitializer {
     public static final String MOD_ID = "velocli";
 
-    // HUD & Movement inställningar
+    // HUD & Movement
     public static boolean hudEnabled = true;
     public static boolean showFps = true;
     public static boolean showCoords = true;
     public static boolean toggleSprint = true;
 
-    // Slim Hand (Viewmodel)
+    // Hand & Slow Swing
+    public static boolean slowSwing = true;
+    public static int swingDuration = 16; // 6 (normal) till 30 (långsam)
     public static boolean slimHand = true;
     public static float handScale = 0.65f;
     public static float handOffsetX = 0.05f;
@@ -31,8 +33,6 @@ public class VeloClient implements ClientModInitializer {
     public static int blueThemeIndex = 0;
 
     public static final int COLOR_BG = 0xD90A1224;
-    public static final int COLOR_BORDER = 0xFF2563EB;
-    public static final int COLOR_ACCENT = 0xFF38BDF8;
     public static final int COLOR_TEXT = 0xFFE0F2FE;
 
     public static int getPrimaryBlue() {
@@ -114,7 +114,7 @@ public class VeloClient implements ClientModInitializer {
 
         int x = 10;
         int y = 10;
-        int width = 154;
+        int width = 158;
         int lineHeight = 12;
 
         int lines = 1;
@@ -126,16 +126,16 @@ public class VeloClient implements ClientModInitializer {
         if (VeloWorldFeatures.baseFinderEnabled) lines++;
         if (VeloWorldFeatures.spawnerFinderEnabled) lines++;
 
-        int height = 12 + (lines * lineHeight);
+        int height = 14 + (lines * lineHeight);
 
-        VeloUiRenderer.drawRoundedBorder(context, x, y, width, height, 6, accent, COLOR_BG);
+        VeloUiRenderer.drawSmoothPanel(context, x, y, width, height, COLOR_BG, accent);
 
-        int textY = y + 7;
-        context.drawTextWithShadow(client.textRenderer, "§lVELO §r§bCLIENT", x + 8, textY, accent);
+        int textY = y + 8;
+        context.drawTextWithShadow(client.textRenderer, "§lVELO §r§bCLIENT", x + 10, textY, accent);
         textY += lineHeight;
 
         if (showFps) {
-            context.drawTextWithShadow(client.textRenderer, "FPS: " + client.getCurrentFps(), x + 8, textY, COLOR_TEXT);
+            context.drawTextWithShadow(client.textRenderer, "FPS: " + client.getCurrentFps(), x + 10, textY, COLOR_TEXT);
             textY += lineHeight;
         }
 
@@ -143,44 +143,44 @@ public class VeloClient implements ClientModInitializer {
             int cx = FreecamManager.isEnabled() ? (int) FreecamManager.camX : client.player.getBlockX();
             int cy = FreecamManager.isEnabled() ? (int) FreecamManager.camY : client.player.getBlockY();
             int cz = FreecamManager.isEnabled() ? (int) FreecamManager.camZ : client.player.getBlockZ();
-            context.drawTextWithShadow(client.textRenderer, String.format("XYZ: %d, %d, %d", cx, cy, cz), x + 8, textY, COLOR_TEXT);
+            context.drawTextWithShadow(client.textRenderer, String.format("XYZ: %d, %d, %d", cx, cy, cz), x + 10, textY, COLOR_TEXT);
             textY += lineHeight;
         }
 
         if (toggleSprint) {
-            context.drawTextWithShadow(client.textRenderer, "Sprint: [AKTIV]", x + 8, textY, accent);
+            context.drawTextWithShadow(client.textRenderer, "Sprint: [AKTIV]", x + 10, textY, accent);
             textY += lineHeight;
         }
 
         if (FreecamManager.isEnabled()) {
-            context.drawTextWithShadow(client.textRenderer, "Freecam: [AKTIV]", x + 8, textY, 0xFF60A5FA);
+            context.drawTextWithShadow(client.textRenderer, "Freecam: [AKTIV]", x + 10, textY, 0xFF60A5FA);
             textY += lineHeight;
         }
 
         if (VeloWorldFeatures.blockEspEnabled) {
-            context.drawTextWithShadow(client.textRenderer, "ESP: " + VeloWorldFeatures.getSelectedEspBlockName(), x + 8, textY, accent);
+            context.drawTextWithShadow(client.textRenderer, "ESP: " + VeloWorldFeatures.selectedEspBlocks.size() + " block", x + 10, textY, accent);
             textY += lineHeight;
         }
 
         if (VeloWorldFeatures.baseFinderEnabled) {
-            context.drawTextWithShadow(client.textRenderer, "Base Finder: [PÅ]", x + 8, textY, 0xFFFFA500);
+            context.drawTextWithShadow(client.textRenderer, "Base Finder: [PÅ]", x + 10, textY, 0xFFFFB020);
             textY += lineHeight;
         }
 
         if (VeloWorldFeatures.spawnerFinderEnabled) {
-            context.drawTextWithShadow(client.textRenderer, "Spawner: " + VeloWorldFeatures.getSelectedSpawnerLabel(), x + 8, textY, 0xFFD946EF);
+            context.drawTextWithShadow(client.textRenderer, "Spawner: " + VeloWorldFeatures.getSelectedSpawnerLabel(), x + 10, textY, 0xFFE040FB);
         }
 
-        // Visa senaste Base/Spawner-varning i 8 sekunder som en clean notis längst upp i mitten
+        // Clean anti-aliased varningsnotis i 8 sekunder
         if (!VeloWorldFeatures.lastAlertMessage.isEmpty()
                 && System.currentTimeMillis() - VeloWorldFeatures.lastAlertTime < 8000) {
             int msgW = client.textRenderer.getWidth(VeloWorldFeatures.lastAlertMessage);
-            int boxW = msgW + 20;
-            int boxH = 20;
+            int boxW = msgW + 22;
+            int boxH = 22;
             int boxX = (client.getWindow().getScaledWidth() - boxW) / 2;
             int boxY = 10;
-            VeloUiRenderer.drawRoundedBorder(context, boxX, boxY, boxW, boxH, 6, accent, 0xE00A1224);
-            context.drawTextWithShadow(client.textRenderer, VeloWorldFeatures.lastAlertMessage, boxX + 10, boxY + 6, 0xFFFFFFFF);
+            VeloUiRenderer.drawSmoothPanel(context, boxX, boxY, boxW, boxH, 0xE60A1224, accent);
+            context.drawTextWithShadow(client.textRenderer, VeloWorldFeatures.lastAlertMessage, boxX + 11, boxY + 7, 0xFFFFFFFF);
         }
     }
 }

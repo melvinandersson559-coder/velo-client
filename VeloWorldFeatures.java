@@ -5,54 +5,28 @@ import net.minecraft.block.*;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.MobSpawnerBlockEntity;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.RenderLayers;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.VertexRendering;
-import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.chunk.WorldChunk;
+import net.minecraft.world.debug.gizmo.DrawStyle;
+import net.minecraft.world.debug.gizmo.GizmoDrawing;
 
 import java.util.*;
 
 public class VeloWorldFeatures {
 
-    // --- BLOCK ESP ---
+    // --- BLOCK ESP (Alla Minecraft-block via VeloBlockPickerScreen) ---
     public static boolean blockEspEnabled = false;
     public static int blockEspRange = 48;
-    public static int selectedEspBlockIndex = 0;
-
-    public static final Block[] ESP_BLOCKS = new Block[]{
+    public static final Set<Block> selectedEspBlocks = new LinkedHashSet<>(List.of(
             Blocks.DIAMOND_ORE,
             Blocks.DEEPSLATE_DIAMOND_ORE,
-            Blocks.ANCIENT_DEBRIS,
-            Blocks.CHEST,
-            Blocks.ENDER_CHEST,
-            Blocks.SPAWNER,
-            Blocks.EMERALD_ORE,
-            Blocks.GOLD_ORE,
-            Blocks.OBSIDIAN,
-            Blocks.SHULKER_BOX
-    };
-
-    public static final String[] ESP_BLOCK_NAMES = new String[]{
-            "Diamond Ore",
-            "Deepslate Diamond",
-            "Ancient Debris",
-            "Chest",
-            "Ender Chest",
-            "Monster Spawner",
-            "Emerald Ore",
-            "Gold Ore",
-            "Obsidian",
-            "Shulker Box"
-    };
+            Blocks.ANCIENT_DEBRIS
+    ));
 
     // --- BASE FINDER ---
     public static boolean baseFinderEnabled = false;
@@ -69,9 +43,10 @@ public class VeloWorldFeatures {
             "Alla Spawners", "Skeleton", "Zombie", "Spider", "Cave Spider", "Blaze", "Magma Cube", "Silverfish"
     };
 
-    // Cachade resultat för rendering & anti-spam
+    // Cachade resultat för glowing 3D-outlines & anti-spam
     private static final List<BlockPos> espFoundBlocks = new ArrayList<>();
     private static final List<BlockPos> baseFoundBlocks = new ArrayList<>();
+    private static final List<BlockPos> redstoneFarmBlocks = new ArrayList<>();
     private static final List<BlockPos> spawnerFoundBlocks = new ArrayList<>();
 
     private static final Set<Long> alertedBaseChunks = new HashSet<>();
@@ -82,14 +57,6 @@ public class VeloWorldFeatures {
     public static long lastAlertTime = 0;
 
     private static int tickCounter = 0;
-
-    public static String getSelectedEspBlockName() {
-        return ESP_BLOCK_NAMES[selectedEspBlockIndex % ESP_BLOCK_NAMES.length];
-    }
-
-    public static Block getSelectedEspBlock() {
-        return ESP_BLOCKS[selectedEspBlockIndex % ESP_BLOCKS.length];
-    }
 
     public static String getSelectedSpawnerLabel() {
         return SPAWNER_LABELS[selectedSpawnerTypeIndex % SPAWNER_LABELS.length];
@@ -105,12 +72,12 @@ public class VeloWorldFeatures {
         if (mc.player == null || mc.world == null) {
             espFoundBlocks.clear();
             baseFoundBlocks.clear();
+            redstoneFarmBlocks.clear();
             spawnerFoundBlocks.clear();
             return;
         }
 
         tickCounter++;
-        // Skanna var 20:e tick (1 gång per sekund) så FPS förblir hög
         if (tickCounter % 20 != 0) return;
 
         int chunkRadius = Math.min(mc.options.getClampedViewDistance(), 8);
@@ -119,6 +86,7 @@ public class VeloWorldFeatures {
         // 1. BASE FINDER & SPAWNER FINDER (laddade chunks)
         if (baseFinderEnabled || spawnerFinderEnabled) {
             baseFoundBlocks.clear();
+            redstoneFarmBlocks.clear();
             spawnerFoundBlocks.clear();
 
             for (int cx = playerChunk.x - chunkRadius; cx <= playerChunk.x + chunkRadius; cx++) {
@@ -130,25 +98,26 @@ public class VeloWorldFeatures {
                     int storageCount = 0;
                     int redstoneBeCount = 0;
                     BlockPos sampleBasePos = null;
+                    List<BlockPos> chunkRedstonePositions = new ArrayList<>();
 
                     for (BlockEntity be : chunk.getBlockEntities().values()) {
                         BlockPos pos = be.getPos();
                         Block block = chunk.getBlockState(pos).getBlock();
 
-                        // Base Finder: Kistor, Ender Chests, Shulker Boxes
                         if (baseFinderEnabled) {
                             if (block instanceof ChestBlock || block instanceof TrappedChestBlock
-                                    || block instanceof EnderChestBlock || block instanceof ShulkerBoxBlock) {
+                                    || block instanceof EnderChestBlock || block instanceof ShulkerBoxBlock
+                                    || block instanceof BarrelBlock) {
                                 storageCount++;
                                 if (sampleBasePos == null) sampleBasePos = pos;
                                 baseFoundBlocks.add(pos);
                             } else if (block instanceof HopperBlock || block instanceof DispenserBlock
                                     || block instanceof DropperBlock || block instanceof ComparatorBlock) {
                                 redstoneBeCount++;
+                                chunkRedstonePositions.add(pos);
                             }
                         }
 
-                        // Spawner Finder
                         if (spawnerFinderEnabled && be instanceof MobSpawnerBlockEntity spawnerBe) {
                             String mobId = getSpawnerMobId(mc, spawnerBe);
                             String wanted = SPAWNER_TYPES[selectedSpawnerTypeIndex % SPAWNER_TYPES.length];
@@ -163,7 +132,6 @@ public class VeloWorldFeatures {
                         }
                     }
 
-                    // Base Finder: kontrollera bas-varning
                     if (baseFinderEnabled && storageCount >= baseChestThreshold && sampleBasePos != null) {
                         if (alertedBaseChunks.add(chunkKey)) {
                             sendAlert(mc, "§b[Base Finder] §fMöjlig §bBAS §f(" + storageCount
@@ -171,44 +139,48 @@ public class VeloWorldFeatures {
                         }
                     }
 
-                    // Base Finder: skanna efter redstone-block i chunken (pistons, observers, repeaters m.m.)
-                    if (baseFinderEnabled && !alertedRedstoneChunks.contains(chunkKey)) {
-                        int redstoneCount = redstoneBeCount + countRedstoneInChunk(chunk);
+                    if (baseFinderEnabled) {
+                        int redstoneCount = redstoneBeCount + collectRedstoneInChunk(chunk, chunkRedstonePositions);
                         if (redstoneCount >= redstoneFarmThreshold) {
-                            alertedRedstoneChunks.add(chunkKey);
-                            int wx = (cx << 4) + 8;
-                            int wz = (cz << 4) + 8;
-                            sendAlert(mc, "§c[Base Finder] §fMöjlig §cREDSTONE FARM §f(" + redstoneCount
-                                    + " redstone-block) i chunk vid §bX:" + wx + " Z:" + wz);
+                            int cap = Math.min(chunkRedstonePositions.size(), 40);
+                            for (int i = 0; i < cap; i++) {
+                                redstoneFarmBlocks.add(chunkRedstonePositions.get(i));
+                            }
+                            if (alertedRedstoneChunks.add(chunkKey)) {
+                                int wx = (cx << 4) + 8;
+                                int wz = (cz << 4) + 8;
+                                sendAlert(mc, "§c[Base Finder] §fMöjlig §cREDSTONE FARM §f(" + redstoneCount
+                                        + " redstone-block) i chunk vid §bX:" + wx + " Z:" + wz);
+                            }
                         }
                     }
                 }
             }
         } else {
             baseFoundBlocks.clear();
+            redstoneFarmBlocks.clear();
             spawnerFoundBlocks.clear();
         }
 
-        // 2. BLOCK ESP (skannar valt block runt spelaren)
+        // 2. BLOCK ESP (skannar alla valda block från VeloBlockPickerScreen)
         espFoundBlocks.clear();
-        if (blockEspEnabled) {
-            Block target = getSelectedEspBlock();
+        if (blockEspEnabled && !selectedEspBlocks.isEmpty()) {
             BlockPos pPos = mc.player.getBlockPos();
             int r = blockEspRange;
-            int minY = Math.max(mc.world.getBottomY(), pPos.getY() - 32);
-            int maxY = Math.min(mc.world.getTopYInclusive(), pPos.getY() + 32);
+            int minY = Math.max(mc.world.getBottomY(), pPos.getY() - 40);
+            int maxY = Math.min(mc.world.getTopYInclusive(), pPos.getY() + 40);
 
             BlockPos.Mutable mut = new BlockPos.Mutable();
-            int limit = 250;
+            int limit = 300;
             outer:
             for (int x = pPos.getX() - r; x <= pPos.getX() + r; x++) {
                 for (int z = pPos.getZ() - r; z <= pPos.getZ() + r; z++) {
+                    if (!mc.world.isChunkLoaded(x >> 4, z >> 4)) continue;
                     for (int y = minY; y <= maxY; y++) {
                         mut.set(x, y, z);
                         Block b = mc.world.getBlockState(mut).getBlock();
-                        boolean match = (b == target)
-                                || (target == Blocks.SHULKER_BOX && b instanceof ShulkerBoxBlock);
-                        if (match) {
+                        if (b == Blocks.AIR || b == Blocks.STONE || b == Blocks.DEEPSLATE || b == Blocks.DIRT) continue;
+                        if (selectedEspBlocks.contains(b)) {
                             espFoundBlocks.add(mut.toImmutable());
                             if (espFoundBlocks.size() >= limit) break outer;
                         }
@@ -218,7 +190,7 @@ public class VeloWorldFeatures {
         }
     }
 
-    private static int countRedstoneInChunk(WorldChunk chunk) {
+    private static int collectRedstoneInChunk(WorldChunk chunk, List<BlockPos> outPositions) {
         int count = 0;
         int bottomY = chunk.getBottomY();
         int topY = chunk.getTopYInclusive();
@@ -235,6 +207,9 @@ public class VeloWorldFeatures {
                             || b instanceof ComparatorBlock || b instanceof RedstoneWireBlock
                             || b == Blocks.REDSTONE_BLOCK || b == Blocks.SLIME_BLOCK || b == Blocks.HONEY_BLOCK) {
                         count++;
+                        if (outPositions.size() < 40) {
+                            outPositions.add(pos.toImmutable());
+                        }
                         if (count >= redstoneFarmThreshold) return count;
                     }
                 }
@@ -263,56 +238,32 @@ public class VeloWorldFeatures {
     }
 
     /**
-     * Ritar 3D-outlines för Block ESP, Base Finder och Spawner Finder (1.21.11 WorldRenderEvents.END_MAIN).
+     * Glowing Outline genom väggar & under marken med GizmoDrawing + ignoreOcclusion() (Minecraft 1.21.11).
      */
     public static void renderWorld(WorldRenderContext context) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.world == null || mc.player == null) return;
-        if (espFoundBlocks.isEmpty() && baseFoundBlocks.isEmpty() && spawnerFoundBlocks.isEmpty()) return;
 
-        MatrixStack matrices = context.matrices();
-        VertexConsumerProvider consumers = context.consumers();
-        if (matrices == null || consumers == null) return;
-
-        Vec3d cam = context.worldState().cameraRenderState.pos;
-        VertexConsumer lineConsumer = consumers.getBuffer(RenderLayers.lines());
-
-        matrices.push();
-
-        // Block ESP (Cyan/Blå)
         if (blockEspEnabled) {
             int color = VeloClient.getAccentColor();
             for (BlockPos pos : espFoundBlocks) {
-                VertexRendering.drawOutline(
-                        matrices, lineConsumer, VoxelShapes.fullCube(),
-                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        color, 2.0f
-                );
+                GizmoDrawing.box(new Box(pos), DrawStyle.stroked(color, 2.5f)).ignoreOcclusion();
             }
         }
 
-        // Base Finder (Guld/Orange för kistor/shulkers)
         if (baseFinderEnabled) {
             for (BlockPos pos : baseFoundBlocks) {
-                VertexRendering.drawOutline(
-                        matrices, lineConsumer, VoxelShapes.fullCube(),
-                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        0xFFFFA500, 2.0f
-                );
+                GizmoDrawing.box(new Box(pos), DrawStyle.stroked(0xFFFFB020, 3.0f)).ignoreOcclusion();
+            }
+            for (BlockPos pos : redstoneFarmBlocks) {
+                GizmoDrawing.box(new Box(pos), DrawStyle.stroked(0xFFFF3B5C, 3.0f)).ignoreOcclusion();
             }
         }
 
-        // Spawner Finder (Lila/Magenta)
         if (spawnerFinderEnabled) {
             for (BlockPos pos : spawnerFoundBlocks) {
-                VertexRendering.drawOutline(
-                        matrices, lineConsumer, VoxelShapes.fullCube(),
-                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        0xFFD946EF, 2.5f
-                );
+                GizmoDrawing.box(new Box(pos), DrawStyle.stroked(0xFFE040FB, 3.0f)).ignoreOcclusion();
             }
         }
-
-        matrices.pop();
     }
 }

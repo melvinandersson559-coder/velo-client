@@ -49,7 +49,7 @@ public class FavoriteServerManager {
 
         servers = new ArrayList<>();
         servers.add(new ServerEntry("Hypixel", "mc.hypixel.net"));
-        servers.add(new ServerEntry("Minemen Club", "na.minemen.club"));
+        servers.add(new ServerEntry("DonutSMP", "donutsmp.net"));
         save();
     }
 

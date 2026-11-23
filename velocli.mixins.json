@@ -6,6 +6,7 @@
   "client": [
     "TitleScreenMixin",
     "HeldItemRendererMixin",
+    "LivingEntityMixin",
     "CameraMixin",
     "EntityMixin"
   ],
