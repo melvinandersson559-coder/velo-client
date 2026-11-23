@@ -50,7 +50,7 @@ public class VeloUtilityModules {
             Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.DIRT, Items.GRAVEL,
             Items.ANDESITE, Items.DIORITE, Items.GRANITE, Items.TUFF,
             Items.ROTTEN_FLESH, Items.SPIDER_EYE, Items.POISONOUS_POTATO,
-            Items.WHEAT_SEEDS, Items.NETHERRACK, Items.ROTTEN_FLESH.asItem()
+            Items.WHEAT_SEEDS, Items.NETHERRACK
     );
 
     public static void tick(MinecraftClient mc, boolean zoomPressed) {

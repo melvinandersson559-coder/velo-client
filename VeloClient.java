@@ -147,7 +147,7 @@ public class VeloClient implements ClientModInitializer {
 
             VeloUiRenderer.drawSmoothPanel(ctx, x, y, 152, 44, 9, COLOR_BG, border, true);
             VeloUiRenderer.drawSmoothRect(ctx, x + 5, y + 8, 2, 28, 1, accent);
-            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§b2.0", x + 13, y + 7, accent);
+            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§b2.1", x + 13, y + 7, accent);
             ctx.drawTextWithShadow(mc.textRenderer, String.format(Locale.ROOT, "§7FPS §f%d  §7•  §f%.1f b/s", mc.getCurrentFps(), bps), x + 13, y + 20, 0xFFE2E8F0);
             ctx.drawTextWithShadow(mc.textRenderer, "§7H: §bHUD Editor  §7RShift: §bMenu", x + 13, y + 31, 0xFF94A3B8);
         }

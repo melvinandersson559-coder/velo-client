@@ -311,7 +311,7 @@ public class VeloMenuScreen extends Screen {
         context.fill(winX + sidebarW, winY + 2, winX + sidebarW + 1, winY + winH - 2, 0xFF1B2B4B);
 
         context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", winX + 14, winY + 14, accent);
-        context.drawTextWithShadow(this.textRenderer, "§7v2.0 • Meteor Edition", winX + 14, winY + 26, 0xFF64748B);
+        context.drawTextWithShadow(this.textRenderer, "§7v2.1 • Meteor Edition", winX + 14, winY + 26, 0xFF64748B);
 
         Category[] categories = Category.values();
         int catStartY = winY + 46;
