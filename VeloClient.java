@@ -100,6 +100,8 @@ public class VeloClient implements ClientModInitializer {
         WorldRenderEvents.END_MAIN.register(VeloWorldFeatures::renderWorld);
 
         HudElementRegistry.addLast(Identifier.of(MOD_ID, "velo_hud"), (context, tickCounter) -> {
+            MinecraftClient mc = MinecraftClient.getInstance();
+            VeloWorldFeatures.renderThroughWallGlow(context, mc);
             renderVeloHud(context);
         });
     }

@@ -5,15 +5,20 @@ import net.minecraft.block.*;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.MobSpawnerBlockEntity;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.render.RenderLayers;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.VertexRendering;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Box;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.chunk.WorldChunk;
-import net.minecraft.world.debug.gizmo.DrawStyle;
-import net.minecraft.world.debug.gizmo.GizmoDrawing;
 
 import java.util.*;
 
@@ -56,6 +61,7 @@ public class VeloWorldFeatures {
     public static String lastAlertMessage = "";
     public static long lastAlertTime = 0;
 
+    private static Vec3d lastCamPos = Vec3d.ZERO;
     private static int tickCounter = 0;
 
     public static String getSelectedSpawnerLabel() {
@@ -171,7 +177,7 @@ public class VeloWorldFeatures {
             int maxY = Math.min(mc.world.getTopYInclusive(), pPos.getY() + 40);
 
             BlockPos.Mutable mut = new BlockPos.Mutable();
-            int limit = 300;
+            int limit = 200;
             outer:
             for (int x = pPos.getX() - r; x <= pPos.getX() + r; x++) {
                 for (int z = pPos.getZ() - r; z <= pPos.getZ() + r; z++) {
@@ -238,32 +244,200 @@ public class VeloWorldFeatures {
     }
 
     /**
-     * Glowing Outline genom väggar & under marken med GizmoDrawing + ignoreOcclusion() (Minecraft 1.21.11).
+     * 3D-outlines i världen via verifierad Minecraft 1.21.11 API (WorldRenderEvents.END_MAIN).
      */
     public static void renderWorld(WorldRenderContext context) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.world == null || mc.player == null) return;
 
+        Vec3d cam = context.worldState().cameraRenderState.pos;
+        lastCamPos = cam;
+
+        if (espFoundBlocks.isEmpty() && baseFoundBlocks.isEmpty()
+                && redstoneFarmBlocks.isEmpty() && spawnerFoundBlocks.isEmpty()) {
+            return;
+        }
+
+        MatrixStack matrices = context.matrices();
+        VertexConsumerProvider consumers = context.consumers();
+        if (matrices == null || consumers == null) return;
+
+        VertexConsumer lineConsumer = consumers.getBuffer(RenderLayers.lines());
+        matrices.push();
+
         if (blockEspEnabled) {
             int color = VeloClient.getAccentColor();
             for (BlockPos pos : espFoundBlocks) {
-                GizmoDrawing.box(new Box(pos), DrawStyle.stroked(color, 2.5f)).ignoreOcclusion();
+                VertexRendering.drawOutline(
+                        matrices, lineConsumer, VoxelShapes.fullCube(),
+                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
+                        color, 2.5f
+                );
             }
         }
 
         if (baseFinderEnabled) {
             for (BlockPos pos : baseFoundBlocks) {
-                GizmoDrawing.box(new Box(pos), DrawStyle.stroked(0xFFFFB020, 3.0f)).ignoreOcclusion();
+                VertexRendering.drawOutline(
+                        matrices, lineConsumer, VoxelShapes.fullCube(),
+                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
+                        0xFFFFB020, 3.0f
+                );
             }
             for (BlockPos pos : redstoneFarmBlocks) {
-                GizmoDrawing.box(new Box(pos), DrawStyle.stroked(0xFFFF3B5C, 3.0f)).ignoreOcclusion();
+                VertexRendering.drawOutline(
+                        matrices, lineConsumer, VoxelShapes.fullCube(),
+                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
+                        0xFFFF3B5C, 3.0f
+                );
             }
         }
 
         if (spawnerFinderEnabled) {
             for (BlockPos pos : spawnerFoundBlocks) {
-                GizmoDrawing.box(new Box(pos), DrawStyle.stroked(0xFFE040FB, 3.0f)).ignoreOcclusion();
+                VertexRendering.drawOutline(
+                        matrices, lineConsumer, VoxelShapes.fullCube(),
+                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
+                        0xFFE040FB, 3.0f
+                );
             }
         }
+
+        matrices.pop();
+    }
+
+    /**
+     * Glowing Outline som syns GENOM väggar och djupt under marken via 3D->2D HUD-projektion.
+     */
+    public static void renderThroughWallGlow(DrawContext ctx, MinecraftClient mc) {
+        if (mc.world == null || mc.player == null || mc.options.hudHidden) return;
+        if (!blockEspEnabled && !baseFinderEnabled && !spawnerFinderEnabled) return;
+
+        int sw = mc.getWindow().getScaledWidth();
+        int sh = mc.getWindow().getScaledHeight();
+        if (sw <= 0 || sh <= 0) return;
+
+        Vec3d camPos = lastCamPos;
+        if (camPos == null || camPos == Vec3d.ZERO) {
+            camPos = new Vec3d(mc.player.getX(), mc.player.getEyeY(), mc.player.getZ());
+        }
+
+        float yaw = FreecamManager.isEnabled() ? FreecamManager.camYaw : mc.player.getYaw();
+        float pitch = FreecamManager.isEnabled() ? FreecamManager.camPitch : mc.player.getPitch();
+        double fov = mc.options.getFov().getValue();
+
+        double yawRad = Math.toRadians(yaw);
+        double pitchRad = Math.toRadians(pitch);
+        double cosPitch = Math.cos(pitchRad);
+        double sinPitch = Math.sin(pitchRad);
+        double sinYaw = Math.sin(yawRad);
+        double cosYaw = Math.cos(yawRad);
+
+        double fx = -sinYaw * cosPitch;
+        double fy = -sinPitch;
+        double fz = cosYaw * cosPitch;
+
+        double rx = -cosYaw;
+        double ry = 0.0;
+        double rz = -sinYaw;
+
+        double ux = ry * fz - rz * fy;
+        double uy = rz * fx - rx * fz;
+        double uz = rx * fy - ry * fx;
+
+        double tanHalfFov = Math.tan(Math.toRadians(fov * 0.5));
+        double aspect = (double) sw / (double) sh;
+
+        if (blockEspEnabled) {
+            int color = VeloClient.getAccentColor();
+            for (BlockPos pos : espFoundBlocks) {
+                drawGlowingBlockOutline(ctx, pos, color, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+            }
+        }
+
+        if (baseFinderEnabled) {
+            for (BlockPos pos : baseFoundBlocks) {
+                drawGlowingBlockOutline(ctx, pos, 0xFFFFB020, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+            }
+            for (BlockPos pos : redstoneFarmBlocks) {
+                drawGlowingBlockOutline(ctx, pos, 0xFFFF3B5C, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+            }
+        }
+
+        if (spawnerFinderEnabled) {
+            for (BlockPos pos : spawnerFoundBlocks) {
+                drawGlowingBlockOutline(ctx, pos, 0xFFE040FB, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+            }
+        }
+    }
+
+    private static void drawGlowingBlockOutline(
+            DrawContext ctx, BlockPos pos, int argb, Vec3d cam,
+            double fx, double fy, double fz,
+            double rx, double ry, double rz,
+            double ux, double uy, double uz,
+            double tanHalfFov, double aspect, int sw, int sh
+    ) {
+        double minX = Double.POSITIVE_INFINITY;
+        double minY = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        double maxY = Double.NEGATIVE_INFINITY;
+        int visibleCorners = 0;
+
+        for (int dx = 0; dx <= 1; dx++) {
+            for (int dy = 0; dy <= 1; dy++) {
+                for (int dz = 0; dz <= 1; dz++) {
+                    double wx = pos.getX() + dx - cam.x;
+                    double wy = pos.getY() + dy - cam.y;
+                    double wz = pos.getZ() + dz - cam.z;
+
+                    double camZ = wx * fx + wy * fy + wz * fz;
+                    if (camZ <= 0.15) continue;
+
+                    double camX = wx * rx + wy * ry + wz * rz;
+                    double camY = wx * ux + wy * uy + wz * uz;
+
+                    double ndcX = camX / (camZ * tanHalfFov * aspect);
+                    double ndcY = camY / (camZ * tanHalfFov);
+
+                    double sx = (ndcX + 1.0) * 0.5 * sw;
+                    double sy = (1.0 - ndcY) * 0.5 * sh;
+
+                    if (sx < minX) minX = sx;
+                    if (sy < minY) minY = sy;
+                    if (sx > maxX) maxX = sx;
+                    if (sy > maxY) maxY = sy;
+                    visibleCorners++;
+                }
+            }
+        }
+
+        if (visibleCorners < 2) return;
+        if (maxX < 0 || minX > sw || maxY < 0 || minY > sh) return;
+
+        int x1 = Math.max(0, (int) Math.floor(minX));
+        int y1 = Math.max(0, (int) Math.floor(minY));
+        int x2 = Math.min(sw, (int) Math.ceil(maxX));
+        int y2 = Math.min(sh, (int) Math.ceil(maxY));
+        if (x2 - x1 < 2 || y2 - y1 < 2) return;
+
+        int glowOuter = (0x55 << 24) | (argb & 0x00FFFFFF);
+        int fillGlow = (0x22 << 24) | (argb & 0x00FFFFFF);
+        int brightEdge = (0xFF << 24) | (argb & 0x00FFFFFF);
+
+        // Mjuk glöd inuti och runt om
+        ctx.fill(x1, y1, x2, y2, fillGlow);
+
+        // Yttre glow-ram (2px)
+        ctx.fill(x1 - 1, y1 - 1, x2 + 1, y1 + 1, glowOuter);
+        ctx.fill(x1 - 1, y2 - 1, x2 + 1, y2 + 1, glowOuter);
+        ctx.fill(x1 - 1, y1, x1 + 1, y2, glowOuter);
+        ctx.fill(x2 - 1, y1, x2 + 1, y2, glowOuter);
+
+        // Skarp lysande kant (1px)
+        ctx.fill(x1, y1, x2, y1 + 1, brightEdge);
+        ctx.fill(x1, y2 - 1, x2, y2, brightEdge);
+        ctx.fill(x1, y1, x1 + 1, y2, brightEdge);
+        ctx.fill(x2 - 1, y1, x2, y2, brightEdge);
     }
 }
