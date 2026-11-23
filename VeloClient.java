@@ -9,13 +9,16 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.util.Identifier;
 import org.lwjgl.glfw.GLFW;
 
 public class VeloClient implements ClientModInitializer {
     public static final String MOD_ID = "velocli";
 
-    // HUD & Movement
+    // Combat, HUD & Movement
+    public static boolean totemWarning = true;
     public static boolean hudEnabled = true;
     public static boolean showFps = true;
     public static boolean showCoords = true;
@@ -33,8 +36,8 @@ public class VeloClient implements ClientModInitializer {
     // Blått färgtema (0 = Electric Blue, 1 = Ice Cyan, 2 = Royal Cobalt)
     public static int blueThemeIndex = 0;
 
-    public static final int COLOR_BG = 0xD90A1224;
-    public static final int COLOR_TEXT = 0xFFE0F2FE;
+    public static final int COLOR_BG = 0xD4070E1D;
+    public static final int COLOR_TEXT = 0xFFE2E8F0;
 
     public static int getPrimaryBlue() {
         return switch (blueThemeIndex) {
@@ -104,7 +107,55 @@ public class VeloClient implements ClientModInitializer {
             MinecraftClient mc = MinecraftClient.getInstance();
             VeloWorldFeatures.renderThroughWallGlow(context, mc);
             renderVeloHud(context);
+            renderTotemWarning(context, mc);
+            VeloWorldFeatures.renderTopPopup(context, mc);
         });
+    }
+
+    private void renderTotemWarning(DrawContext context, MinecraftClient client) {
+        if (!totemWarning || client.player == null || client.options.hudHidden) {
+            return;
+        }
+
+        // Om spelaren redan har totem i offhand -> ingen varning
+        if (client.player.getOffHandStack().isOf(Items.TOTEM_OF_UNDYING)) {
+            return;
+        }
+
+        // Räkna hur många totems som ligger i inventoryt
+        int totemCount = 0;
+        int invSize = client.player.getInventory().size();
+        for (int i = 0; i < invSize; i++) {
+            ItemStack stack = client.player.getInventory().getStack(i);
+            if (stack.isOf(Items.TOTEM_OF_UNDYING)) {
+                totemCount += stack.getCount();
+            }
+        }
+
+        if (totemCount <= 0) {
+            return;
+        }
+
+        // Mjuk pulserande modern varnings-pill
+        float pulse = 0.5f + 0.5f * (float) Math.sin(System.currentTimeMillis() / 220.0);
+        int borderCol = VeloUiRenderer.lerpColor(0xBBF59E0B, 0xFFFF3B5C, pulse);
+        int bgCol = VeloUiRenderer.lerpColor(0xDF160B12, 0xEB260D16, pulse);
+
+        String title = "INGEN TOTEM I OFFHAND";
+        String sub = "Du har " + totemCount + (totemCount == 1 ? " totem" : " totems") + " i inventoryt!";
+
+        int textW = Math.max(client.textRenderer.getWidth(title), client.textRenderer.getWidth(sub));
+        int boxW = textW + 44;
+        int boxH = 34;
+        int sw = client.getWindow().getScaledWidth();
+        int sh = client.getWindow().getScaledHeight();
+        int boxX = (sw - boxW) / 2;
+        int boxY = Math.max(66, sh / 6);
+
+        VeloUiRenderer.drawSmoothPanel(context, boxX, boxY, boxW, boxH, 9, bgCol, borderCol, true);
+        context.drawItem(new ItemStack(Items.TOTEM_OF_UNDYING), boxX + 10, boxY + 9);
+        context.drawTextWithShadow(client.textRenderer, "§l" + title, boxX + 32, boxY + 7, 0xFFFF6B81);
+        context.drawTextWithShadow(client.textRenderer, sub, boxX + 32, boxY + 19, 0xFFFDE68A);
     }
 
     private void renderVeloHud(DrawContext context) {
@@ -114,10 +165,9 @@ public class VeloClient implements ClientModInitializer {
         }
 
         int accent = getAccentColor();
-
         int x = 10;
         int y = 10;
-        int width = 158;
+        int width = 152;
         int lineHeight = 12;
 
         int lines = 1;
@@ -129,16 +179,19 @@ public class VeloClient implements ClientModInitializer {
         if (VeloWorldFeatures.baseFinderEnabled) lines++;
         if (VeloWorldFeatures.spawnerFinderEnabled) lines++;
 
-        int height = 14 + (lines * lineHeight);
+        int height = 16 + (lines * lineHeight);
 
-        VeloUiRenderer.drawSmoothPanel(context, x, y, width, height, 8, 0xCC070F1F, (0xAA << 24) | (accent & 0x00FFFFFF), true);
+        VeloUiRenderer.drawSmoothPanel(context, x, y, width, height, 9, COLOR_BG, (0x88 << 24) | (accent & 0x00FFFFFF), true);
+        // Clean vertikal accent-linje på vänster sida
+        VeloUiRenderer.drawSmoothRect(context, x + 5, y + 8, 2, height - 16, 1, accent);
 
+        int tx = x + 13;
         int textY = y + 8;
-        context.drawTextWithShadow(client.textRenderer, "§lVELO §r§bCLIENT", x + 10, textY, accent);
-        textY += lineHeight;
+        context.drawTextWithShadow(client.textRenderer, "§lVELO §r§7CLIENT", tx, textY, accent);
+        textY += lineHeight + 2;
 
         if (showFps) {
-            context.drawTextWithShadow(client.textRenderer, "FPS: " + client.getCurrentFps(), x + 10, textY, COLOR_TEXT);
+            context.drawTextWithShadow(client.textRenderer, "§7FPS  §f" + client.getCurrentFps(), tx, textY, COLOR_TEXT);
             textY += lineHeight;
         }
 
@@ -146,44 +199,32 @@ public class VeloClient implements ClientModInitializer {
             int cx = FreecamManager.isEnabled() ? (int) FreecamManager.camX : client.player.getBlockX();
             int cy = FreecamManager.isEnabled() ? (int) FreecamManager.camY : client.player.getBlockY();
             int cz = FreecamManager.isEnabled() ? (int) FreecamManager.camZ : client.player.getBlockZ();
-            context.drawTextWithShadow(client.textRenderer, String.format("XYZ: %d, %d, %d", cx, cy, cz), x + 10, textY, COLOR_TEXT);
+            context.drawTextWithShadow(client.textRenderer, String.format("§7XYZ  §f%d, %d, %d", cx, cy, cz), tx, textY, COLOR_TEXT);
             textY += lineHeight;
         }
 
         if (toggleSprint) {
-            context.drawTextWithShadow(client.textRenderer, "Sprint: [AKTIV]", x + 10, textY, accent);
+            context.drawTextWithShadow(client.textRenderer, "§7Sprint  §bPÅ", tx, textY, accent);
             textY += lineHeight;
         }
 
         if (FreecamManager.isEnabled()) {
-            context.drawTextWithShadow(client.textRenderer, "Freecam: [AKTIV]", x + 10, textY, 0xFF60A5FA);
+            context.drawTextWithShadow(client.textRenderer, "§7Freecam  §bAKTIV", tx, textY, 0xFF60A5FA);
             textY += lineHeight;
         }
 
         if (VeloWorldFeatures.blockEspEnabled) {
-            context.drawTextWithShadow(client.textRenderer, "ESP: " + VeloWorldFeatures.selectedEspBlocks.size() + " block", x + 10, textY, accent);
+            context.drawTextWithShadow(client.textRenderer, "§7Block ESP  §b" + VeloWorldFeatures.selectedEspBlocks.size() + " valda", tx, textY, accent);
             textY += lineHeight;
         }
 
         if (VeloWorldFeatures.baseFinderEnabled) {
-            context.drawTextWithShadow(client.textRenderer, "Base Finder: [PÅ]", x + 10, textY, 0xFFFFB020);
+            context.drawTextWithShadow(client.textRenderer, "§7Base Finder  §6PÅ", tx, textY, 0xFFFFB020);
             textY += lineHeight;
         }
 
         if (VeloWorldFeatures.spawnerFinderEnabled) {
-            context.drawTextWithShadow(client.textRenderer, "Spawner: " + VeloWorldFeatures.getSelectedSpawnerLabel(), x + 10, textY, 0xFFE040FB);
-        }
-
-        // Clean anti-aliased varningsnotis i 8 sekunder
-        if (!VeloWorldFeatures.lastAlertMessage.isEmpty()
-                && System.currentTimeMillis() - VeloWorldFeatures.lastAlertTime < 8000) {
-            int msgW = client.textRenderer.getWidth(VeloWorldFeatures.lastAlertMessage);
-            int boxW = msgW + 22;
-            int boxH = 22;
-            int boxX = (client.getWindow().getScaledWidth() - boxW) / 2;
-            int boxY = 10;
-            VeloUiRenderer.drawSmoothPanel(context, boxX, boxY, boxW, boxH, 0xE60A1224, accent);
-            context.drawTextWithShadow(client.textRenderer, VeloWorldFeatures.lastAlertMessage, boxX + 11, boxY + 7, 0xFFFFFFFF);
+            context.drawTextWithShadow(client.textRenderer, "§7Spawner  §d" + VeloWorldFeatures.getSelectedSpawnerLabel(), tx, textY, 0xFFE040FB);
         }
     }
 }

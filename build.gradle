@@ -99,6 +99,6 @@ remapJar {
         if (!missing.isEmpty()) {
             throw new GradleException("FEL: Saknar filer i .jar: " + missing + ". Kontrollera att alla .java-filer laddades upp i huvudmappen!")
         }
-        println("VERIFIERAD OK: Alla VELO Client 1.8.0-filer finns i " + jarFile.name)
+        println("VERIFIERAD OK: Alla VELO Client 1.9.0-filer finns i " + jarFile.name)
     }
 }

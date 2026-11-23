@@ -13,9 +13,9 @@ import net.minecraft.client.render.VertexRendering;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.registry.Registries;
-import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.chunk.WorldChunk;
@@ -23,6 +23,29 @@ import net.minecraft.world.chunk.WorldChunk;
 import java.util.*;
 
 public class VeloWorldFeatures {
+
+    // --- POPUP TOAST SYSTEM (Toppen av skärmen istället för chatt) ---
+    public static class PopupAlert {
+        public final String tag;
+        public final String title;
+        public final String details;
+        public final String coords;
+        public final int accentColor;
+        public final long createdAt;
+        public final long durationMs;
+
+        public PopupAlert(String tag, String title, String details, String coords, int accentColor, long durationMs) {
+            this.tag = tag;
+            this.title = title;
+            this.details = details;
+            this.coords = coords;
+            this.accentColor = accentColor;
+            this.createdAt = System.currentTimeMillis();
+            this.durationMs = durationMs;
+        }
+    }
+
+    private static PopupAlert activePopup = null;
 
     // --- BLOCK ESP (Alla Minecraft-block via VeloBlockPickerScreen) ---
     public static boolean blockEspEnabled = false;
@@ -58,9 +81,6 @@ public class VeloWorldFeatures {
     private static final Set<Long> alertedRedstoneChunks = new HashSet<>();
     private static final Set<Long> alertedSpawners = new HashSet<>();
 
-    public static String lastAlertMessage = "";
-    public static long lastAlertTime = 0;
-
     private static Vec3d lastCamPos = Vec3d.ZERO;
     private static int tickCounter = 0;
 
@@ -72,6 +92,10 @@ public class VeloWorldFeatures {
         alertedBaseChunks.clear();
         alertedRedstoneChunks.clear();
         alertedSpawners.clear();
+    }
+
+    public static void showPopup(String tag, String title, String details, String coords, int accentColor) {
+        activePopup = new PopupAlert(tag, title, details, coords, accentColor, 6500L);
     }
 
     public static void tick(MinecraftClient mc) {
@@ -102,8 +126,12 @@ public class VeloWorldFeatures {
 
                     long chunkKey = ChunkPos.toLong(cx, cz);
                     int storageCount = 0;
+                    int shulkerCount = 0;
                     int redstoneBeCount = 0;
+                    int chunkSpawnerCount = 0;
                     BlockPos sampleBasePos = null;
+                    BlockPos sampleSpawnerPos = null;
+                    String lastMatchedMob = "unknown";
                     List<BlockPos> chunkRedstonePositions = new ArrayList<>();
 
                     for (BlockEntity be : chunk.getBlockEntities().values()) {
@@ -112,9 +140,13 @@ public class VeloWorldFeatures {
 
                         if (baseFinderEnabled) {
                             if (block instanceof ChestBlock || block instanceof TrappedChestBlock
-                                    || block instanceof EnderChestBlock || block instanceof ShulkerBoxBlock
-                                    || block instanceof BarrelBlock) {
+                                    || block instanceof EnderChestBlock || block instanceof BarrelBlock) {
                                 storageCount++;
+                                if (sampleBasePos == null) sampleBasePos = pos;
+                                baseFoundBlocks.add(pos);
+                            } else if (block instanceof ShulkerBoxBlock) {
+                                storageCount++;
+                                shulkerCount++;
                                 if (sampleBasePos == null) sampleBasePos = pos;
                                 baseFoundBlocks.add(pos);
                             } else if (block instanceof HopperBlock || block instanceof DispenserBlock
@@ -124,40 +156,62 @@ public class VeloWorldFeatures {
                             }
                         }
 
-                        if (spawnerFinderEnabled && be instanceof MobSpawnerBlockEntity spawnerBe) {
-                            String mobId = getSpawnerMobId(mc, spawnerBe);
-                            String wanted = SPAWNER_TYPES[selectedSpawnerTypeIndex % SPAWNER_TYPES.length];
-                            if (wanted.equals("ALL") || mobId.equalsIgnoreCase(wanted)) {
-                                spawnerFoundBlocks.add(pos);
-                                long posKey = pos.asLong();
-                                if (alertedSpawners.add(posKey)) {
-                                    sendAlert(mc, "§d[Spawner Finder] §fHittade §b" + mobId.toUpperCase(Locale.ROOT)
-                                            + " §fspawner vid §b" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ());
+                        if (be instanceof MobSpawnerBlockEntity spawnerBe) {
+                            chunkSpawnerCount++;
+                            if (spawnerFinderEnabled) {
+                                String mobId = getSpawnerMobId(mc, spawnerBe);
+                                String wanted = SPAWNER_TYPES[selectedSpawnerTypeIndex % SPAWNER_TYPES.length];
+                                if (wanted.equals("ALL") || mobId.equalsIgnoreCase(wanted)) {
+                                    spawnerFoundBlocks.add(pos);
+                                    sampleSpawnerPos = pos;
+                                    lastMatchedMob = mobId;
                                 }
                             }
                         }
                     }
 
-                    if (baseFinderEnabled && storageCount >= baseChestThreshold && sampleBasePos != null) {
-                        if (alertedBaseChunks.add(chunkKey)) {
-                            sendAlert(mc, "§b[Base Finder] §fMöjlig §bBAS §f(" + storageCount
-                                    + " kistor/shulkers) vid §b" + sampleBasePos.getX() + ", " + sampleBasePos.getY() + ", " + sampleBasePos.getZ());
-                        }
-                    }
-
+                    int redstoneCount = 0;
                     if (baseFinderEnabled) {
-                        int redstoneCount = redstoneBeCount + collectRedstoneInChunk(chunk, chunkRedstonePositions);
+                        redstoneCount = redstoneBeCount + collectRedstoneInChunk(chunk, chunkRedstonePositions);
                         if (redstoneCount >= redstoneFarmThreshold) {
-                            int cap = Math.min(chunkRedstonePositions.size(), 40);
+                            int cap = Math.min(chunkRedstonePositions.size(), 36);
                             for (int i = 0; i < cap; i++) {
                                 redstoneFarmBlocks.add(chunkRedstonePositions.get(i));
                             }
-                            if (alertedRedstoneChunks.add(chunkKey)) {
-                                int wx = (cx << 4) + 8;
-                                int wz = (cz << 4) + 8;
-                                sendAlert(mc, "§c[Base Finder] §fMöjlig §cREDSTONE FARM §f(" + redstoneCount
-                                        + " redstone-block) i chunk vid §bX:" + wx + " Z:" + wz);
-                            }
+                        }
+                    }
+
+                    // Popup för Base Finder (visar storlek, kistor/shulkers, redstone och spawners)
+                    if (baseFinderEnabled && storageCount >= baseChestThreshold && sampleBasePos != null) {
+                        if (alertedBaseChunks.add(chunkKey)) {
+                            String sizeLabel = classifyBaseSize(storageCount, shulkerCount, redstoneCount, chunkSpawnerCount);
+                            String details = storageCount + " kistor"
+                                    + (shulkerCount > 0 ? " (" + shulkerCount + " shulkers)" : "")
+                                    + "  •  " + redstoneCount + " redstone"
+                                    + "  •  " + chunkSpawnerCount + " spawners";
+                            String coords = "X: " + sampleBasePos.getX() + "  Y: " + sampleBasePos.getY() + "  Z: " + sampleBasePos.getZ();
+                            showPopup("BASE FINDER", sizeLabel + " HITTAD", details, coords, 0xFFFFB020);
+                        }
+                    } else if (baseFinderEnabled && redstoneCount >= redstoneFarmThreshold) {
+                        if (alertedRedstoneChunks.add(chunkKey)) {
+                            int wx = (cx << 4) + 8;
+                            int wz = (cz << 4) + 8;
+                            String sizeLabel = redstoneCount >= 50 ? "STOR REDSTONE FARM" : "REDSTONE FARM";
+                            String details = redstoneCount + " redstone  •  " + storageCount + " kistor  •  " + chunkSpawnerCount + " spawners";
+                            String coords = "Chunk X: " + wx + "  Z: " + wz;
+                            showPopup("BASE FINDER", sizeLabel, details, coords, 0xFFFF4D6D);
+                        }
+                    }
+
+                    // Popup för Spawner Finder
+                    if (spawnerFinderEnabled && sampleSpawnerPos != null) {
+                        long spawnerKey = sampleSpawnerPos.asLong();
+                        if (alertedSpawners.add(spawnerKey)) {
+                            String mobTitle = lastMatchedMob.replace('_', ' ').toUpperCase(Locale.ROOT) + " SPAWNER";
+                            String details = chunkSpawnerCount + (chunkSpawnerCount == 1 ? " spawner i chunk" : " spawners i chunk")
+                                    + (storageCount > 0 ? "  •  " + storageCount + " kistor" : "");
+                            String coords = "X: " + sampleSpawnerPos.getX() + "  Y: " + sampleSpawnerPos.getY() + "  Z: " + sampleSpawnerPos.getZ();
+                            showPopup("SPAWNER FINDER", mobTitle, details, coords, 0xFFE040FB);
                         }
                     }
                 }
@@ -196,6 +250,14 @@ public class VeloWorldFeatures {
         }
     }
 
+    private static String classifyBaseSize(int storage, int shulkers, int redstone, int spawners) {
+        int score = storage + shulkers * 3 + (redstone / 4) + spawners * 6;
+        if (score >= 45) return "MEGA BAS";
+        if (score >= 22) return "STOR BAS";
+        if (score >= 10) return "MEDEL BAS";
+        return "LITEN BAS";
+    }
+
     private static int collectRedstoneInChunk(WorldChunk chunk, List<BlockPos> outPositions) {
         int count = 0;
         int bottomY = chunk.getBottomY();
@@ -216,7 +278,7 @@ public class VeloWorldFeatures {
                         if (outPositions.size() < 40) {
                             outPositions.add(pos.toImmutable());
                         }
-                        if (count >= redstoneFarmThreshold) return count;
+                        if (count >= 120) return count;
                     }
                 }
             }
@@ -235,16 +297,8 @@ public class VeloWorldFeatures {
         return "unknown";
     }
 
-    private static void sendAlert(MinecraftClient mc, String msg) {
-        lastAlertMessage = msg;
-        lastAlertTime = System.currentTimeMillis();
-        if (mc.player != null) {
-            mc.player.sendMessage(Text.literal("§9§lVELO §8» " + msg), false);
-        }
-    }
-
     /**
-     * 3D-outlines i världen via verifierad Minecraft 1.21.11 API (WorldRenderEvents.END_MAIN).
+     * 3D-outlines i världen via verifierad Minecraft 1.21.11 API.
      */
     public static void renderWorld(WorldRenderContext context) {
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -271,7 +325,7 @@ public class VeloWorldFeatures {
                 VertexRendering.drawOutline(
                         matrices, lineConsumer, VoxelShapes.fullCube(),
                         pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        color, 2.5f
+                        color, 2.0f
                 );
             }
         }
@@ -281,14 +335,14 @@ public class VeloWorldFeatures {
                 VertexRendering.drawOutline(
                         matrices, lineConsumer, VoxelShapes.fullCube(),
                         pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        0xFFFFB020, 3.0f
+                        0xFFFFB020, 2.2f
                 );
             }
             for (BlockPos pos : redstoneFarmBlocks) {
                 VertexRendering.drawOutline(
                         matrices, lineConsumer, VoxelShapes.fullCube(),
                         pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        0xFFFF3B5C, 3.0f
+                        0xFFFF4D6D, 2.2f
                 );
             }
         }
@@ -298,7 +352,7 @@ public class VeloWorldFeatures {
                 VertexRendering.drawOutline(
                         matrices, lineConsumer, VoxelShapes.fullCube(),
                         pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        0xFFE040FB, 3.0f
+                        0xFFE040FB, 2.5f
                 );
             }
         }
@@ -307,7 +361,7 @@ public class VeloWorldFeatures {
     }
 
     /**
-     * Glowing Outline som syns GENOM väggar och djupt under marken via 3D->2D HUD-projektion.
+     * Snygg, clean genom-väggar ESP med mjuka glödande hörnhakar + subtil fyllning.
      */
     public static void renderThroughWallGlow(DrawContext ctx, MinecraftClient mc) {
         if (mc.world == null || mc.player == null || mc.options.hudHidden) return;
@@ -351,27 +405,27 @@ public class VeloWorldFeatures {
         if (blockEspEnabled) {
             int color = VeloClient.getAccentColor();
             for (BlockPos pos : espFoundBlocks) {
-                drawGlowingBlockOutline(ctx, pos, color, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                drawModernEspBox(ctx, pos, color, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
             }
         }
 
         if (baseFinderEnabled) {
             for (BlockPos pos : baseFoundBlocks) {
-                drawGlowingBlockOutline(ctx, pos, 0xFFFFB020, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                drawModernEspBox(ctx, pos, 0xFFFFB020, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
             }
             for (BlockPos pos : redstoneFarmBlocks) {
-                drawGlowingBlockOutline(ctx, pos, 0xFFFF3B5C, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                drawModernEspBox(ctx, pos, 0xFFFF4D6D, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
             }
         }
 
         if (spawnerFinderEnabled) {
             for (BlockPos pos : spawnerFoundBlocks) {
-                drawGlowingBlockOutline(ctx, pos, 0xFFE040FB, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                drawModernEspBox(ctx, pos, 0xFFE040FB, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
             }
         }
     }
 
-    private static void drawGlowingBlockOutline(
+    private static void drawModernEspBox(
             DrawContext ctx, BlockPos pos, int argb, Vec3d cam,
             double fx, double fy, double fz,
             double rx, double ry, double rz,
@@ -419,25 +473,95 @@ public class VeloWorldFeatures {
         int y1 = Math.max(0, (int) Math.floor(minY));
         int x2 = Math.min(sw, (int) Math.ceil(maxX));
         int y2 = Math.min(sh, (int) Math.ceil(maxY));
-        if (x2 - x1 < 2 || y2 - y1 < 2) return;
+        int w = x2 - x1;
+        int h = y2 - y1;
+        if (w < 3 || h < 3) return;
 
-        int glowOuter = (0x55 << 24) | (argb & 0x00FFFFFF);
-        int fillGlow = (0x22 << 24) | (argb & 0x00FFFFFF);
-        int brightEdge = (0xFF << 24) | (argb & 0x00FFFFFF);
+        int rgb = argb & 0x00FFFFFF;
+        int softFill = (0x1A << 24) | rgb;
+        int faintBorder = (0x55 << 24) | rgb;
+        int brightCorner = (0xEE << 24) | rgb;
 
-        // Mjuk glöd inuti och runt om
-        ctx.fill(x1, y1, x2, y2, fillGlow);
+        // Mjuk anti-aliased inner-glow
+        VeloUiRenderer.drawSmoothPanel(ctx, x1, y1, w, h, Math.min(4, Math.min(w, h) / 3), softFill, faintBorder, false);
 
-        // Yttre glow-ram (2px)
-        ctx.fill(x1 - 1, y1 - 1, x2 + 1, y1 + 1, glowOuter);
-        ctx.fill(x1 - 1, y2 - 1, x2 + 1, y2 + 1, glowOuter);
-        ctx.fill(x1 - 1, y1, x1 + 1, y2, glowOuter);
-        ctx.fill(x2 - 1, y1, x2 + 1, y2, glowOuter);
+        // Moderna lysande hörnhakar (corner brackets)
+        int cl = Math.max(3, Math.min(8, Math.min(w, h) / 3));
+        // Top-left
+        ctx.fill(x1, y1, x1 + cl, y1 + 1, brightCorner);
+        ctx.fill(x1, y1, x1 + 1, y1 + cl, brightCorner);
+        // Top-right
+        ctx.fill(x2 - cl, y1, x2, y1 + 1, brightCorner);
+        ctx.fill(x2 - 1, y1, x2, y1 + cl, brightCorner);
+        // Bottom-left
+        ctx.fill(x1, y2 - 1, x1 + cl, y2, brightCorner);
+        ctx.fill(x1, y2 - cl, x1 + 1, y2, brightCorner);
+        // Bottom-right
+        ctx.fill(x2 - cl, y2 - 1, x2, y2, brightCorner);
+        ctx.fill(x2 - 1, y2 - cl, x2, y2, brightCorner);
+    }
 
-        // Skarp lysande kant (1px)
-        ctx.fill(x1, y1, x2, y1 + 1, brightEdge);
-        ctx.fill(x1, y2 - 1, x2, y2, brightEdge);
-        ctx.fill(x1, y1, x1 + 1, y2, brightEdge);
-        ctx.fill(x2 - 1, y1, x2, y2, brightEdge);
+    /**
+     * Modern animerad pop-up på toppen av skärmen (ersätter chatt-meddelanden).
+     */
+    public static void renderTopPopup(DrawContext ctx, MinecraftClient mc) {
+        PopupAlert popup = activePopup;
+        if (popup == null) return;
+
+        long elapsed = System.currentTimeMillis() - popup.createdAt;
+        if (elapsed >= popup.durationMs) {
+            activePopup = null;
+            return;
+        }
+
+        // Smooth slide-in (320ms) och slide-out (350ms)
+        float anim;
+        if (elapsed < 320L) {
+            float t = elapsed / 320.0f;
+            anim = 1.0f - (float) Math.pow(1.0f - t, 3.0);
+        } else if (elapsed > popup.durationMs - 350L) {
+            float t = (popup.durationMs - elapsed) / 350.0f;
+            anim = MathHelper.clamp(t * t, 0.0f, 1.0f);
+        } else {
+            anim = 1.0f;
+        }
+
+        int sw = mc.getWindow().getScaledWidth();
+        int titleW = mc.textRenderer.getWidth(popup.tag + "  " + popup.title);
+        int detailsW = mc.textRenderer.getWidth(popup.details);
+        int coordsW = mc.textRenderer.getWidth(popup.coords);
+        int boxW = Math.max(210, Math.max(titleW, Math.max(detailsW, coordsW)) + 34);
+        int boxH = 48;
+        int boxX = (sw - boxW) / 2;
+        int boxY = (int) (-boxH - 8 + (boxH + 20) * anim);
+
+        int accentRgb = popup.accentColor & 0x00FFFFFF;
+        int borderCol = (0xCC << 24) | accentRgb;
+
+        VeloUiRenderer.drawSmoothPanel(ctx, boxX, boxY, boxW, boxH, 9, 0xEC070E1D, borderCol, true);
+
+        // Vänster accent-stapel
+        VeloUiRenderer.drawSmoothRect(ctx, boxX + 5, boxY + 8, 3, boxH - 16, 2, popup.accentColor);
+
+        // Liten pill-badge för taggen (BASE FINDER / SPAWNER FINDER)
+        int tagW = mc.textRenderer.getWidth(popup.tag) + 10;
+        VeloUiRenderer.drawSmoothRect(ctx, boxX + 14, boxY + 7, tagW, 12, 4, (0x33 << 24) | accentRgb);
+        ctx.drawTextWithShadow(mc.textRenderer, popup.tag, boxX + 19, boxY + 9, popup.accentColor);
+
+        // Rubrik (t.ex. STOR BAS HITTAD / SKELETON SPAWNER)
+        ctx.drawTextWithShadow(mc.textRenderer, "§l" + popup.title, boxX + 14 + tagW + 6, boxY + 9, 0xFFF8FAFC);
+
+        // Detaljer (kistor, redstone, spawners)
+        ctx.drawTextWithShadow(mc.textRenderer, popup.details, boxX + 14, boxY + 23, 0xFFCBD5E1);
+
+        // Koordinater
+        ctx.drawTextWithShadow(mc.textRenderer, popup.coords, boxX + 14, boxY + 34, 0xFF94A3B8);
+
+        // Tunn progress-bar längst ner
+        float remaining = 1.0f - MathHelper.clamp((float) elapsed / (float) popup.durationMs, 0.0f, 1.0f);
+        int barMaxW = boxW - 22;
+        int barW = Math.max(4, Math.round(barMaxW * remaining));
+        VeloUiRenderer.drawSmoothRect(ctx, boxX + 11, boxY + boxH - 3, barMaxW, 2, 1, 0x331E293B);
+        VeloUiRenderer.drawSmoothRect(ctx, boxX + 11, boxY + boxH - 3, barW, 2, 1, popup.accentColor);
     }
 }

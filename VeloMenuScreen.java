@@ -20,7 +20,7 @@ public class VeloMenuScreen extends Screen {
         FINDER("Finder & ESP", "Glowing ESP, Base & Spawner"),
         MOVEMENT("Movement", "Player & Freecam"),
         HAND("Hand", "Slow Swing & Viewmodel"),
-        VISUALS("Visuals", "HUD & Overlay"),
+        VISUALS("Combat & HUD", "Totem Warning & Overlay"),
         THEME("Theme", "Blue Appearance");
 
         final String label;
@@ -128,7 +128,7 @@ public class VeloMenuScreen extends Screen {
         allRows.add(SettingRow.slider(Category.FINDER, "ESP Radie", "Sökradie i block",
                 16f, 80f, "m", () -> (float) VeloWorldFeatures.blockEspRange, v -> VeloWorldFeatures.blockEspRange = Math.round(v)));
 
-        allRows.add(SettingRow.toggle(Category.FINDER, "Base Finder", "Glowing outline genom marken + varning",
+        allRows.add(SettingRow.toggle(Category.FINDER, "Base Finder", "Top-popup med storlek, redstone, spawners + outline",
                 () -> VeloWorldFeatures.baseFinderEnabled, v -> {
                     VeloWorldFeatures.baseFinderEnabled = v;
                     if (v) VeloWorldFeatures.clearAlerts();
@@ -138,7 +138,7 @@ public class VeloMenuScreen extends Screen {
         allRows.add(SettingRow.slider(Category.FINDER, "Redstone Gräns", "Block för redstone-farm varning",
                 8f, 60f, "", () -> (float) VeloWorldFeatures.redstoneFarmThreshold, v -> VeloWorldFeatures.redstoneFarmThreshold = Math.round(v)));
 
-        allRows.add(SettingRow.toggle(Category.FINDER, "Spawner Finder", "Glowing outline runt monster spawners",
+        allRows.add(SettingRow.toggle(Category.FINDER, "Spawner Finder", "Top-popup + glowing outline runt spawners",
                 () -> VeloWorldFeatures.spawnerFinderEnabled, v -> {
                     VeloWorldFeatures.spawnerFinderEnabled = v;
                     if (v) VeloWorldFeatures.clearAlerts();
@@ -174,8 +174,10 @@ public class VeloMenuScreen extends Screen {
         allRows.add(SettingRow.slider(Category.HAND, "Hand Z-Offset", "Avstånd från kameran",
                 -0.45f, 0.20f, "", () -> VeloClient.handOffsetZ, v -> VeloClient.handOffsetZ = v));
 
-        // Visuals
-        allRows.add(SettingRow.toggle(Category.VISUALS, "VELO HUD", "Visar blå VELO-panel i hörnet",
+        // Combat & HUD
+        allRows.add(SettingRow.toggle(Category.VISUALS, "Totem Warning", "Varnar om du har totem i inventory men inte i offhand",
+                () -> VeloClient.totemWarning, v -> VeloClient.totemWarning = v));
+        allRows.add(SettingRow.toggle(Category.VISUALS, "VELO HUD", "Visar clean VELO-panel i hörnet",
                 () -> VeloClient.hudEnabled, v -> VeloClient.hudEnabled = v));
         allRows.add(SettingRow.toggle(Category.VISUALS, "FPS Counter", "Visar FPS i HUD",
                 () -> VeloClient.showFps, v -> VeloClient.showFps = v));
@@ -254,12 +256,12 @@ public class VeloMenuScreen extends Screen {
         int accent = VeloClient.getAccentColor();
 
         // Anti-aliased modernt huvudfönster
-        VeloUiRenderer.drawSmoothPanel(context, winX, winY, winW, winH, 10, 0xF0081020, 0xBB2563EB, true);
+        VeloUiRenderer.drawSmoothPanel(context, winX, winY, winW, winH, 10, 0xEC060C1A, 0x992563EB, true);
         VeloUiRenderer.drawSmoothRect(context, winX + 1, winY + 1, sidebarW - 1, winH - 2, 0xF2070D1B);
         context.fill(winX + sidebarW, winY + 2, winX + sidebarW + 1, winY + winH - 2, 0xFF1B2B4B);
 
         context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", winX + 16, winY + 16, accent);
-        context.drawTextWithShadow(this.textRenderer, "§7Clean v1.8.1", winX + 16, winY + 28, 0xFF64748B);
+        context.drawTextWithShadow(this.textRenderer, "§7Clean v1.9", winX + 16, winY + 28, 0xFF64748B);
 
         // Sidopanelens kategorier
         Category[] categories = Category.values();
