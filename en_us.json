@@ -1,4 +1,7 @@
 {
   "key.velocli.menu": "Open VELO Client Menu",
-  "key.velocli.freecam": "Toggle VELO Freecam"
+  "key.velocli.freecam": "Toggle VELO Freecam",
+  "key.velocli.hud_editor": "Open VELO HUD Editor",
+  "key.velocli.zoom": "VELO Smooth Zoom",
+  "key.velocli.freelook": "VELO FreeLook (360°)"
 }

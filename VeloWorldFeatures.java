@@ -12,6 +12,10 @@ import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.VertexRendering;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.ItemEntity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
@@ -24,7 +28,6 @@ import java.util.*;
 
 public class VeloWorldFeatures {
 
-    // --- POPUP TOAST SYSTEM (Toppen av skärmen istället för chatt) ---
     public static class PopupAlert {
         public final String tag;
         public final String title;
@@ -45,9 +48,21 @@ public class VeloWorldFeatures {
         }
     }
 
+    public static class LogoutSpot {
+        public final String name;
+        public final Vec3d pos;
+        public final long timestamp;
+
+        public LogoutSpot(String name, Vec3d pos) {
+            this.name = name;
+            this.pos = pos;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
+
     private static PopupAlert activePopup = null;
 
-    // --- BLOCK ESP (Alla Minecraft-block via VeloBlockPickerScreen) ---
+    // --- BLOCK ESP ---
     public static boolean blockEspEnabled = false;
     public static int blockEspRange = 48;
     public static final Set<Block> selectedEspBlocks = new LinkedHashSet<>(List.of(
@@ -71,11 +86,24 @@ public class VeloWorldFeatures {
             "Alla Spawners", "Skeleton", "Zombie", "Spider", "Cave Spider", "Blaze", "Magma Cube", "Silverfish"
     };
 
-    // Cachade resultat för glowing 3D-outlines & anti-spam
+    // --- EXTRA METEOR-STYLE VISUALS ---
+    public static boolean playerEsp = false;
+    public static boolean mobEsp = false;
+    public static boolean itemEsp = false;
+    public static boolean tracers = false;
+    public static boolean waypointsEnabled = true;
+    public static boolean breadcrumbs = false;
+    public static boolean logoutSpots = false;
+
     private static final List<BlockPos> espFoundBlocks = new ArrayList<>();
     private static final List<BlockPos> baseFoundBlocks = new ArrayList<>();
     private static final List<BlockPos> redstoneFarmBlocks = new ArrayList<>();
     private static final List<BlockPos> spawnerFoundBlocks = new ArrayList<>();
+
+    private static final Deque<Vec3d> breadcrumbPoints = new ArrayDeque<>();
+    private static final Map<UUID, Vec3d> trackedPlayers = new HashMap<>();
+    private static final Map<UUID, String> trackedPlayerNames = new HashMap<>();
+    private static final List<LogoutSpot> savedLogoutSpots = new ArrayList<>();
 
     private static final Set<Long> alertedBaseChunks = new HashSet<>();
     private static final Set<Long> alertedRedstoneChunks = new HashSet<>();
@@ -104,16 +132,55 @@ public class VeloWorldFeatures {
             baseFoundBlocks.clear();
             redstoneFarmBlocks.clear();
             spawnerFoundBlocks.clear();
+            breadcrumbPoints.clear();
+            trackedPlayers.clear();
+            trackedPlayerNames.clear();
             return;
+        }
+
+        // Breadcrumbs spår
+        if (breadcrumbs) {
+            Vec3d p = new Vec3d(mc.player.getX(), mc.player.getY() + 0.15, mc.player.getZ());
+            if (breadcrumbPoints.isEmpty() || breadcrumbPoints.peekLast().squaredDistanceTo(p) > 0.35) {
+                breadcrumbPoints.addLast(p);
+                while (breadcrumbPoints.size() > 140) breadcrumbPoints.removeFirst();
+            }
+        } else if (!breadcrumbPoints.isEmpty()) {
+            breadcrumbPoints.clear();
         }
 
         tickCounter++;
         if (tickCounter % 20 != 0) return;
 
+        // LogoutSpots spårning
+        if (logoutSpots) {
+            Set<UUID> currentIds = new HashSet<>();
+            for (PlayerEntity pe : mc.world.getPlayers()) {
+                if (pe == mc.player) continue;
+                currentIds.add(pe.getUuid());
+                trackedPlayers.put(pe.getUuid(), new Vec3d(pe.getX(), pe.getY(), pe.getZ()));
+                trackedPlayerNames.put(pe.getUuid(), pe.getName().getString());
+            }
+            Iterator<Map.Entry<UUID, Vec3d>> it = trackedPlayers.entrySet().iterator();
+            while (it.hasNext()) {
+                Map.Entry<UUID, Vec3d> e = it.next();
+                if (!currentIds.contains(e.getKey())) {
+                    String pname = trackedPlayerNames.getOrDefault(e.getKey(), "Player");
+                    Vec3d lpos = e.getValue();
+                    savedLogoutSpots.add(new LogoutSpot(pname, lpos));
+                    if (savedLogoutSpots.size() > 15) savedLogoutSpots.remove(0);
+                    showPopup("LOGOUT SPOT", pname + " LOGGADE UT", "Spelaren försvann härifrån",
+                            String.format("X: %d  Y: %d  Z: %d", (int) lpos.x, (int) lpos.y, (int) lpos.z), 0xFF38BDF8);
+                    it.remove();
+                    trackedPlayerNames.remove(e.getKey());
+                }
+            }
+        }
+
         int chunkRadius = Math.min(mc.options.getClampedViewDistance(), 8);
         ChunkPos playerChunk = mc.player.getChunkPos();
 
-        // 1. BASE FINDER & SPAWNER FINDER (laddade chunks)
+        // 1. BASE FINDER & SPAWNER FINDER
         if (baseFinderEnabled || spawnerFinderEnabled) {
             baseFoundBlocks.clear();
             redstoneFarmBlocks.clear();
@@ -181,7 +248,6 @@ public class VeloWorldFeatures {
                         }
                     }
 
-                    // Popup för Base Finder (visar storlek, kistor/shulkers, redstone och spawners)
                     if (baseFinderEnabled && storageCount >= baseChestThreshold && sampleBasePos != null) {
                         if (alertedBaseChunks.add(chunkKey)) {
                             String sizeLabel = classifyBaseSize(storageCount, shulkerCount, redstoneCount, chunkSpawnerCount);
@@ -203,7 +269,6 @@ public class VeloWorldFeatures {
                         }
                     }
 
-                    // Popup för Spawner Finder
                     if (spawnerFinderEnabled && sampleSpawnerPos != null) {
                         long spawnerKey = sampleSpawnerPos.asLong();
                         if (alertedSpawners.add(spawnerKey)) {
@@ -222,7 +287,7 @@ public class VeloWorldFeatures {
             spawnerFoundBlocks.clear();
         }
 
-        // 2. BLOCK ESP (skannar alla valda block från VeloBlockPickerScreen)
+        // 2. BLOCK ESP
         espFoundBlocks.clear();
         if (blockEspEnabled && !selectedEspBlocks.isEmpty()) {
             BlockPos pPos = mc.player.getBlockPos();
@@ -275,9 +340,7 @@ public class VeloWorldFeatures {
                             || b instanceof ComparatorBlock || b instanceof RedstoneWireBlock
                             || b == Blocks.REDSTONE_BLOCK || b == Blocks.SLIME_BLOCK || b == Blocks.HONEY_BLOCK) {
                         count++;
-                        if (outPositions.size() < 40) {
-                            outPositions.add(pos.toImmutable());
-                        }
+                        if (outPositions.size() < 40) outPositions.add(pos.toImmutable());
                         if (count >= 120) return count;
                     }
                 }
@@ -297,9 +360,6 @@ public class VeloWorldFeatures {
         return "unknown";
     }
 
-    /**
-     * 3D-outlines i världen via verifierad Minecraft 1.21.11 API.
-     */
     public static void renderWorld(WorldRenderContext context) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.world == null || mc.player == null) return;
@@ -322,50 +382,37 @@ public class VeloWorldFeatures {
         if (blockEspEnabled) {
             int color = VeloClient.getAccentColor();
             for (BlockPos pos : espFoundBlocks) {
-                VertexRendering.drawOutline(
-                        matrices, lineConsumer, VoxelShapes.fullCube(),
-                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        color, 2.0f
-                );
+                VertexRendering.drawOutline(matrices, lineConsumer, VoxelShapes.fullCube(),
+                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z, color, 2.0f);
             }
         }
 
         if (baseFinderEnabled) {
             for (BlockPos pos : baseFoundBlocks) {
-                VertexRendering.drawOutline(
-                        matrices, lineConsumer, VoxelShapes.fullCube(),
-                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        0xFFFFB020, 2.2f
-                );
+                VertexRendering.drawOutline(matrices, lineConsumer, VoxelShapes.fullCube(),
+                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z, 0xFFFFB020, 2.2f);
             }
             for (BlockPos pos : redstoneFarmBlocks) {
-                VertexRendering.drawOutline(
-                        matrices, lineConsumer, VoxelShapes.fullCube(),
-                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        0xFFFF4D6D, 2.2f
-                );
+                VertexRendering.drawOutline(matrices, lineConsumer, VoxelShapes.fullCube(),
+                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z, 0xFFFF4D6D, 2.2f);
             }
         }
 
         if (spawnerFinderEnabled) {
             for (BlockPos pos : spawnerFoundBlocks) {
-                VertexRendering.drawOutline(
-                        matrices, lineConsumer, VoxelShapes.fullCube(),
-                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z,
-                        0xFFE040FB, 2.5f
-                );
+                VertexRendering.drawOutline(matrices, lineConsumer, VoxelShapes.fullCube(),
+                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z, 0xFFE040FB, 2.5f);
             }
         }
 
         matrices.pop();
     }
 
-    /**
-     * Snygg, clean genom-väggar ESP med mjuka glödande hörnhakar + subtil fyllning.
-     */
     public static void renderThroughWallGlow(DrawContext ctx, MinecraftClient mc) {
         if (mc.world == null || mc.player == null || mc.options.hudHidden) return;
-        if (!blockEspEnabled && !baseFinderEnabled && !spawnerFinderEnabled) return;
+        boolean anyActive = blockEspEnabled || baseFinderEnabled || spawnerFinderEnabled
+                || playerEsp || mobEsp || itemEsp || tracers || waypointsEnabled || breadcrumbs || logoutSpots;
+        if (!anyActive) return;
 
         int sw = mc.getWindow().getScaledWidth();
         int sh = mc.getWindow().getScaledHeight();
@@ -376,8 +423,10 @@ public class VeloWorldFeatures {
             camPos = new Vec3d(mc.player.getX(), mc.player.getEyeY(), mc.player.getZ());
         }
 
-        float yaw = FreecamManager.isEnabled() ? FreecamManager.camYaw : mc.player.getYaw();
-        float pitch = FreecamManager.isEnabled() ? FreecamManager.camPitch : mc.player.getPitch();
+        float yaw = FreecamManager.isEnabled() ? FreecamManager.camYaw
+                : (FreecamManager.isFreeLookActive() ? FreecamManager.freeLookYaw : mc.player.getYaw());
+        float pitch = FreecamManager.isEnabled() ? FreecamManager.camPitch
+                : (FreecamManager.isFreeLookActive() ? FreecamManager.freeLookPitch : mc.player.getPitch());
         double fov = mc.options.getFov().getValue();
 
         double yawRad = Math.toRadians(yaw);
@@ -402,61 +451,154 @@ public class VeloWorldFeatures {
         double tanHalfFov = Math.tan(Math.toRadians(fov * 0.5));
         double aspect = (double) sw / (double) sh;
 
+        // Block ESP / Base Finder / Spawner Finder
         if (blockEspEnabled) {
             int color = VeloClient.getAccentColor();
             for (BlockPos pos : espFoundBlocks) {
-                drawModernEspBox(ctx, pos, color, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                drawModernEspBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, color, null,
+                        camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
             }
         }
-
         if (baseFinderEnabled) {
             for (BlockPos pos : baseFoundBlocks) {
-                drawModernEspBox(ctx, pos, 0xFFFFB020, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                drawModernEspBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, 0xFFFFB020, null,
+                        camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
             }
             for (BlockPos pos : redstoneFarmBlocks) {
-                drawModernEspBox(ctx, pos, 0xFFFF4D6D, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                drawModernEspBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, 0xFFFF4D6D, null,
+                        camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
+            }
+        }
+        if (spawnerFinderEnabled) {
+            for (BlockPos pos : spawnerFoundBlocks) {
+                drawModernEspBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, 0xFFE040FB, null,
+                        camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
             }
         }
 
-        if (spawnerFinderEnabled) {
-            for (BlockPos pos : spawnerFoundBlocks) {
-                drawModernEspBox(ctx, pos, 0xFFE040FB, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+        // Player ESP, Mob ESP, Item ESP & Tracers
+        if (playerEsp || mobEsp || itemEsp || tracers) {
+            for (Entity e : mc.world.getEntities()) {
+                if (e == mc.player) continue;
+                if (e instanceof PlayerEntity pe && (playerEsp || tracers)) {
+                    int dist = (int) Math.round(mc.player.distanceTo(pe));
+                    String tag = playerEsp ? (pe.getName().getString() + " §c" + (int) Math.ceil(pe.getHealth()) + "❤ §7" + dist + "m") : null;
+                    drawModernEspBox(ctx, pe.getX() - 0.35, pe.getY(), pe.getZ() - 0.35, 0.7, pe.getHeight(), 0.7,
+                            0xFF38BDF8, tag, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, tracers, mc);
+                } else if (e instanceof HostileEntity he && mobEsp) {
+                    String tag = he.getName().getString() + " §c" + (int) Math.ceil(he.getHealth()) + "❤";
+                    drawModernEspBox(ctx, he.getX() - 0.35, he.getY(), he.getZ() - 0.35, 0.7, he.getHeight(), 0.7,
+                            0xFFFF4D6D, tag, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
+                } else if (e instanceof ItemEntity ie && itemEsp) {
+                    String tag = ie.getStack().getName().getString() + (ie.getStack().getCount() > 1 ? " x" + ie.getStack().getCount() : "");
+                    drawModernEspBox(ctx, ie.getX() - 0.2, ie.getY(), ie.getZ() - 0.2, 0.4, 0.4, 0.4,
+                            0xFF34D399, tag, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
+                }
+            }
+        }
+
+        // Waypoints
+        if (waypointsEnabled && !VeloConfigManager.data.waypoints.isEmpty()) {
+            for (VeloConfigManager.Waypoint wp : VeloConfigManager.data.waypoints) {
+                if (!wp.enabled) continue;
+                double[] screen = projectPoint(wp.x + 0.5, wp.y + 1.2, wp.z + 0.5, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                if (screen == null) continue;
+                int dist = (int) Math.round(Math.sqrt(mc.player.squaredDistanceTo(wp.x + 0.5, wp.y + 0.5, wp.z + 0.5)));
+                String label = "§b◆ §f" + wp.name + " §7[" + dist + "m]";
+                int lw = mc.textRenderer.getWidth(label) + 12;
+                int lx = (int) screen[0] - lw / 2;
+                int ly = (int) screen[1] - 10;
+                VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 16, 6, 0xCC070E1D, wp.color, false);
+                ctx.drawTextWithShadow(mc.textRenderer, label, lx + 6, ly + 4, 0xFFFFFFFF);
+            }
+        }
+
+        // LogoutSpots
+        if (logoutSpots && !savedLogoutSpots.isEmpty()) {
+            for (LogoutSpot spot : savedLogoutSpots) {
+                double[] screen = projectPoint(spot.pos.x, spot.pos.y + 1.0, spot.pos.z, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                if (screen == null) continue;
+                String label = "§c✕ §f" + spot.name + " §7(Logout)";
+                int lw = mc.textRenderer.getWidth(label) + 10;
+                int lx = (int) screen[0] - lw / 2;
+                int ly = (int) screen[1] - 8;
+                VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 15, 5, 0xCC180A12, 0xFFFF4D6D, false);
+                ctx.drawTextWithShadow(mc.textRenderer, label, lx + 5, ly + 4, 0xFFFFFFFF);
+            }
+        }
+
+        // Breadcrumbs trail
+        if (breadcrumbs && breadcrumbPoints.size() >= 2) {
+            int accent = VeloClient.getAccentColor();
+            double[] prev = null;
+            for (Vec3d pt : breadcrumbPoints) {
+                double[] cur = projectPoint(pt.x, pt.y, pt.z, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh);
+                if (prev != null && cur != null) {
+                    draw2DLine(ctx, (int) prev[0], (int) prev[1], (int) cur[0], (int) cur[1], accent);
+                }
+                prev = cur;
             }
         }
     }
 
-    private static void drawModernEspBox(
-            DrawContext ctx, BlockPos pos, int argb, Vec3d cam,
+    private static double[] projectPoint(
+            double wx0, double wy0, double wz0, Vec3d cam,
             double fx, double fy, double fz,
             double rx, double ry, double rz,
             double ux, double uy, double uz,
             double tanHalfFov, double aspect, int sw, int sh
     ) {
-        double minX = Double.POSITIVE_INFINITY;
-        double minY = Double.POSITIVE_INFINITY;
-        double maxX = Double.NEGATIVE_INFINITY;
-        double maxY = Double.NEGATIVE_INFINITY;
+        double wx = wx0 - cam.x;
+        double wy = wy0 - cam.y;
+        double wz = wz0 - cam.z;
+        double camZ = wx * fx + wy * fy + wz * fz;
+        if (camZ <= 0.15) return null;
+        double camX = wx * rx + wy * ry + wz * rz;
+        double camY = wx * ux + wy * uy + wz * uz;
+        double ndcX = camX / (camZ * tanHalfFov * aspect);
+        double ndcY = camY / (camZ * tanHalfFov);
+        double sx = (ndcX + 1.0) * 0.5 * sw;
+        double sy = (1.0 - ndcY) * 0.5 * sh;
+        if (sx < -60 || sx > sw + 60 || sy < -60 || sy > sh + 60) return null;
+        return new double[]{sx, sy};
+    }
+
+    private static void draw2DLine(DrawContext ctx, int x0, int y0, int x1, int y1, int color) {
+        int dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+        int steps = Math.max(dx, dy);
+        if (steps <= 0 || steps > 1200) return;
+        int stride = Math.max(1, steps / 90);
+        for (int i = 0; i <= steps; i += stride) {
+            int x = x0 + (x1 - x0) * i / steps;
+            int y = y0 + (y1 - y0) * i / steps;
+            ctx.fill(x, y, x + 2, y + 2, color);
+        }
+    }
+
+    private static void drawModernEspBox(
+            DrawContext ctx, double bx, double by, double bz, double bw, double bh, double bd,
+            int argb, String label, Vec3d cam,
+            double fx, double fy, double fz,
+            double rx, double ry, double rz,
+            double ux, double uy, double uz,
+            double tanHalfFov, double aspect, int sw, int sh, boolean drawTracer, MinecraftClient mc
+    ) {
+        double minX = Double.POSITIVE_INFINITY, minY = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY;
         int visibleCorners = 0;
 
         for (int dx = 0; dx <= 1; dx++) {
             for (int dy = 0; dy <= 1; dy++) {
                 for (int dz = 0; dz <= 1; dz++) {
-                    double wx = pos.getX() + dx - cam.x;
-                    double wy = pos.getY() + dy - cam.y;
-                    double wz = pos.getZ() + dz - cam.z;
-
+                    double wx = bx + dx * bw - cam.x;
+                    double wy = by + dy * bh - cam.y;
+                    double wz = bz + dz * bd - cam.z;
                     double camZ = wx * fx + wy * fy + wz * fz;
                     if (camZ <= 0.15) continue;
-
                     double camX = wx * rx + wy * ry + wz * rz;
                     double camY = wx * ux + wy * uy + wz * uz;
-
-                    double ndcX = camX / (camZ * tanHalfFov * aspect);
-                    double ndcY = camY / (camZ * tanHalfFov);
-
-                    double sx = (ndcX + 1.0) * 0.5 * sw;
-                    double sy = (1.0 - ndcY) * 0.5 * sh;
-
+                    double sx = (camX / (camZ * tanHalfFov * aspect) + 1.0) * 0.5 * sw;
+                    double sy = (1.0 - camY / (camZ * tanHalfFov)) * 0.5 * sh;
                     if (sx < minX) minX = sx;
                     if (sy < minY) minY = sy;
                     if (sx > maxX) maxX = sx;
@@ -473,8 +615,7 @@ public class VeloWorldFeatures {
         int y1 = Math.max(0, (int) Math.floor(minY));
         int x2 = Math.min(sw, (int) Math.ceil(maxX));
         int y2 = Math.min(sh, (int) Math.ceil(maxY));
-        int w = x2 - x1;
-        int h = y2 - y1;
+        int w = x2 - x1, h = y2 - y1;
         if (w < 3 || h < 3) return;
 
         int rgb = argb & 0x00FFFFFF;
@@ -482,28 +623,31 @@ public class VeloWorldFeatures {
         int faintBorder = (0x55 << 24) | rgb;
         int brightCorner = (0xEE << 24) | rgb;
 
-        // Mjuk anti-aliased inner-glow
         VeloUiRenderer.drawSmoothPanel(ctx, x1, y1, w, h, Math.min(4, Math.min(w, h) / 3), softFill, faintBorder, false);
 
-        // Moderna lysande hörnhakar (corner brackets)
         int cl = Math.max(3, Math.min(8, Math.min(w, h) / 3));
-        // Top-left
         ctx.fill(x1, y1, x1 + cl, y1 + 1, brightCorner);
         ctx.fill(x1, y1, x1 + 1, y1 + cl, brightCorner);
-        // Top-right
         ctx.fill(x2 - cl, y1, x2, y1 + 1, brightCorner);
         ctx.fill(x2 - 1, y1, x2, y1 + cl, brightCorner);
-        // Bottom-left
         ctx.fill(x1, y2 - 1, x1 + cl, y2, brightCorner);
         ctx.fill(x1, y2 - cl, x1 + 1, y2, brightCorner);
-        // Bottom-right
         ctx.fill(x2 - cl, y2 - 1, x2, y2, brightCorner);
         ctx.fill(x2 - 1, y2 - cl, x2, y2, brightCorner);
+
+        if (drawTracer) {
+            draw2DLine(ctx, sw / 2, sh / 2, (x1 + x2) / 2, (y1 + y2) / 2, (0xAA << 24) | rgb);
+        }
+
+        if (label != null) {
+            int lw = mc.textRenderer.getWidth(label) + 8;
+            int lx = (x1 + x2 - lw) / 2;
+            int ly = Math.max(2, y1 - 14);
+            VeloUiRenderer.drawSmoothPanel(ctx, lx, ly, lw, 12, 4, 0xCC070E1D, (0x99 << 24) | rgb, false);
+            ctx.drawTextWithShadow(mc.textRenderer, label, lx + 4, ly + 2, 0xFFFFFFFF);
+        }
     }
 
-    /**
-     * Modern animerad pop-up på toppen av skärmen (ersätter chatt-meddelanden).
-     */
     public static void renderTopPopup(DrawContext ctx, MinecraftClient mc) {
         PopupAlert popup = activePopup;
         if (popup == null) return;
@@ -514,7 +658,6 @@ public class VeloWorldFeatures {
             return;
         }
 
-        // Smooth slide-in (320ms) och slide-out (350ms)
         float anim;
         if (elapsed < 320L) {
             float t = elapsed / 320.0f;
@@ -539,25 +682,15 @@ public class VeloWorldFeatures {
         int borderCol = (0xCC << 24) | accentRgb;
 
         VeloUiRenderer.drawSmoothPanel(ctx, boxX, boxY, boxW, boxH, 9, 0xEC070E1D, borderCol, true);
-
-        // Vänster accent-stapel
         VeloUiRenderer.drawSmoothRect(ctx, boxX + 5, boxY + 8, 3, boxH - 16, 2, popup.accentColor);
 
-        // Liten pill-badge för taggen (BASE FINDER / SPAWNER FINDER)
         int tagW = mc.textRenderer.getWidth(popup.tag) + 10;
         VeloUiRenderer.drawSmoothRect(ctx, boxX + 14, boxY + 7, tagW, 12, 4, (0x33 << 24) | accentRgb);
         ctx.drawTextWithShadow(mc.textRenderer, popup.tag, boxX + 19, boxY + 9, popup.accentColor);
-
-        // Rubrik (t.ex. STOR BAS HITTAD / SKELETON SPAWNER)
         ctx.drawTextWithShadow(mc.textRenderer, "§l" + popup.title, boxX + 14 + tagW + 6, boxY + 9, 0xFFF8FAFC);
-
-        // Detaljer (kistor, redstone, spawners)
         ctx.drawTextWithShadow(mc.textRenderer, popup.details, boxX + 14, boxY + 23, 0xFFCBD5E1);
-
-        // Koordinater
         ctx.drawTextWithShadow(mc.textRenderer, popup.coords, boxX + 14, boxY + 34, 0xFF94A3B8);
 
-        // Tunn progress-bar längst ner
         float remaining = 1.0f - MathHelper.clamp((float) elapsed / (float) popup.durationMs, 0.0f, 1.0f);
         int barMaxW = boxW - 22;
         int barW = Math.max(4, Math.round(barMaxW * remaining));

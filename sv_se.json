@@ -1,4 +1,7 @@
 {
   "key.velocli.menu": "Öppna VELO Client Meny",
-  "key.velocli.freecam": "Växla VELO Freecam"
+  "key.velocli.freecam": "Växla VELO Freecam",
+  "key.velocli.hud_editor": "Öppna VELO HUD Editor",
+  "key.velocli.zoom": "VELO Smooth Zoom",
+  "key.velocli.freelook": "VELO FreeLook (360°)"
 }

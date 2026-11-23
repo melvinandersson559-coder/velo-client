@@ -89,6 +89,10 @@ remapJar {
             "com/velo/client/VeloUiRenderer.class",
             "com/velo/client/VeloWorldFeatures.class",
             "com/velo/client/FreecamManager.class",
+            "com/velo/client/VeloConfigManager.class",
+            "com/velo/client/VeloHudEditorScreen.class",
+            "com/velo/client/VeloWaypointScreen.class",
+            "com/velo/client/VeloUtilityModules.class",
             "com/velo/client/mixin/TitleScreenMixin.class",
             "com/velo/client/mixin/HeldItemRendererMixin.class",
             "com/velo/client/mixin/LivingEntityMixin.class",
@@ -99,6 +103,6 @@ remapJar {
         if (!missing.isEmpty()) {
             throw new GradleException("FEL: Saknar filer i .jar: " + missing + ". Kontrollera att alla .java-filer laddades upp i huvudmappen!")
         }
-        println("VERIFIERAD OK: Alla VELO Client 1.9.0-filer finns i " + jarFile.name)
+        println("VERIFIERAD OK: Alla VELO Client 2.0.0-filer finns i " + jarFile.name)
     }
 }

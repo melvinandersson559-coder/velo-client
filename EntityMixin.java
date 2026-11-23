@@ -15,12 +15,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class EntityMixin {
 
     @Inject(method = "changeLookDirection", at = @At("HEAD"), cancellable = true)
-    private void velo$freecamLook(double cursorDeltaX, double cursorDeltaY, CallbackInfo ci) {
+    private void velo$customLook(double cursorDeltaX, double cursorDeltaY, CallbackInfo ci) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (FreecamManager.isEnabled() && mc.player != null && (Object) this == mc.player) {
-            FreecamManager.camYaw += (float) cursorDeltaX * 0.15f;
-            FreecamManager.camPitch = MathHelper.clamp(FreecamManager.camPitch + (float) cursorDeltaY * 0.15f, -90.0f, 90.0f);
-            ci.cancel();
+        if (mc.player != null && (Object) this == mc.player) {
+            if (FreecamManager.isEnabled()) {
+                FreecamManager.camYaw += (float) cursorDeltaX * 0.15f;
+                FreecamManager.camPitch = MathHelper.clamp(FreecamManager.camPitch + (float) cursorDeltaY * 0.15f, -90.0f, 90.0f);
+                ci.cancel();
+            } else if (FreecamManager.isFreeLookActive()) {
+                FreecamManager.freeLookYaw += (float) cursorDeltaX * 0.15f;
+                FreecamManager.freeLookPitch = MathHelper.clamp(FreecamManager.freeLookPitch + (float) cursorDeltaY * 0.15f, -89.0f, 89.0f);
+                ci.cancel();
+            }
         }
     }
 

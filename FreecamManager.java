@@ -10,10 +10,33 @@ public class FreecamManager {
     public static double prevCamX, prevCamY, prevCamZ;
     public static float camYaw, camPitch;
 
+    // FreeLook (360° kamera runt spelaren medan du springer rakt fram)
+    public static boolean freeLookEnabled = true;
+    private static boolean freeLookActive = false;
+    public static float freeLookYaw, freeLookPitch;
+
     private static float savedPlayerYaw, savedPlayerPitch;
 
     public static boolean isEnabled() {
         return enabled;
+    }
+
+    public static boolean isFreeLookActive() {
+        return freeLookActive && !enabled;
+    }
+
+    public static void setFreeLookActive(boolean active, MinecraftClient mc) {
+        if (!freeLookEnabled || enabled || mc.player == null) {
+            freeLookActive = false;
+            return;
+        }
+        if (active && !freeLookActive) {
+            freeLookActive = true;
+            freeLookYaw = mc.player.getYaw();
+            freeLookPitch = mc.player.getPitch();
+        } else if (!active && freeLookActive) {
+            freeLookActive = false;
+        }
     }
 
     public static void setEnabled(boolean value) {
@@ -21,6 +44,7 @@ public class FreecamManager {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (value) {
             if (mc.player == null) return;
+            freeLookActive = false;
             enabled = true;
             camX = prevCamX = mc.player.getX();
             camY = prevCamY = mc.player.getEyeY();

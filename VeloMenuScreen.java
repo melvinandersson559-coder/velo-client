@@ -17,11 +17,12 @@ public class VeloMenuScreen extends Screen {
     private final Screen parent;
 
     private enum Category {
-        FINDER("Finder & ESP", "Glowing ESP, Base & Spawner"),
-        MOVEMENT("Movement", "Player & Freecam"),
-        HAND("Hand", "Slow Swing & Viewmodel"),
-        VISUALS("Combat & HUD", "Totem Warning & Overlay"),
-        THEME("Theme", "Blue Appearance");
+        RENDER("Render & ESP", "Fullbright, ESP, Tracers, Waypoints"),
+        FINDER("Finder", "Base Finder, Block ESP & Spawners"),
+        PLAYER("Player & Chest", "ChestCleaner, AutoTool, Replenish"),
+        VIEWMODEL("ViewModel", "Slow Swing, Scale, Offset & Rotation"),
+        MOVEMENT("Camera & Move", "Freecam, FreeLook, Zoom & Sprint"),
+        HUD("HUD & Theme", "Drag & Drop HUD Editor & Colors");
 
         final String label;
         final String subLabel;
@@ -95,13 +96,13 @@ public class VeloMenuScreen extends Screen {
         }
     }
 
-    private Category selectedCategory = Category.FINDER;
+    private Category selectedCategory = Category.RENDER;
     private TextFieldWidget searchField;
     private final List<SettingRow> allRows = new ArrayList<>();
     private SettingRow draggingSlider = null;
 
     private int winX, winY, winW, winH;
-    private final int sidebarW = 132;
+    private final int sidebarW = 136;
     private int scrollOffset = 0;
 
     public VeloMenuScreen() {
@@ -117,8 +118,40 @@ public class VeloMenuScreen extends Screen {
     private void buildRows() {
         allRows.clear();
 
-        // Finder & ESP
-        allRows.add(SettingRow.toggle(Category.FINDER, "Block ESP", "Glowing outline runt valda block",
+        // RENDER & ESP
+        allRows.add(SettingRow.toggle(Category.RENDER, "Fullbright", "Se perfekt i mörker och grottor",
+                () -> VeloUtilityModules.fullbright, v -> VeloUtilityModules.fullbright = v));
+        allRows.add(SettingRow.toggle(Category.RENDER, "Player ESP", "Glowing box + HP & avstånd på spelare",
+                () -> VeloWorldFeatures.playerEsp, v -> VeloWorldFeatures.playerEsp = v));
+        allRows.add(SettingRow.toggle(Category.RENDER, "Mob ESP", "Glowing box + HP runt fientliga mobs",
+                () -> VeloWorldFeatures.mobEsp, v -> VeloWorldFeatures.mobEsp = v));
+        allRows.add(SettingRow.toggle(Category.RENDER, "Item ESP", "Visar namn och box på items på marken",
+                () -> VeloWorldFeatures.itemEsp, v -> VeloWorldFeatures.itemEsp = v));
+        allRows.add(SettingRow.toggle(Category.RENDER, "Tracers", "Ritar linjer från skärmens mitt till spelare",
+                () -> VeloWorldFeatures.tracers, v -> VeloWorldFeatures.tracers = v));
+        allRows.add(SettingRow.toggle(Category.RENDER, "Breadcrumbs", "Lämnar ett glödande blått spår bakom dig",
+                () -> VeloWorldFeatures.breadcrumbs, v -> VeloWorldFeatures.breadcrumbs = v));
+        allRows.add(SettingRow.toggle(Category.RENDER, "LogoutSpots", "Markerar exakt var spelare loggar ut",
+                () -> VeloWorldFeatures.logoutSpots, v -> VeloWorldFeatures.logoutSpots = v));
+        allRows.add(SettingRow.toggle(Category.RENDER, "Waypoints", "Visar dina sparade waypoints genom väggar",
+                () -> VeloWorldFeatures.waypointsEnabled, v -> VeloWorldFeatures.waypointsEnabled = v));
+        allRows.add(SettingRow.action(Category.RENDER, "Hantera Waypoints", "Skapa & ta bort waypoints",
+                () -> "Öppna (" + VeloConfigManager.data.waypoints.size() + ") →",
+                () -> {
+                    if (this.client != null) this.client.setScreen(new VeloWaypointScreen(this));
+                }));
+
+        // FINDER
+        allRows.add(SettingRow.toggle(Category.FINDER, "Base Finder", "Top-popup med storlek, redstone, spawners + outline",
+                () -> VeloWorldFeatures.baseFinderEnabled, v -> {
+                    VeloWorldFeatures.baseFinderEnabled = v;
+                    if (v) VeloWorldFeatures.clearAlerts();
+                }));
+        allRows.add(SettingRow.slider(Category.FINDER, "Bas Kistor/Shulkers", "Antal för bas-popup",
+                2f, 20f, "", () -> (float) VeloWorldFeatures.baseChestThreshold, v -> VeloWorldFeatures.baseChestThreshold = Math.round(v)));
+        allRows.add(SettingRow.slider(Category.FINDER, "Redstone Gräns", "Block för redstone-farm popup",
+                8f, 60f, "", () -> (float) VeloWorldFeatures.redstoneFarmThreshold, v -> VeloWorldFeatures.redstoneFarmThreshold = Math.round(v)));
+        allRows.add(SettingRow.toggle(Category.FINDER, "Block ESP", "Glowing hörnhakar runt valda block",
                 () -> VeloWorldFeatures.blockEspEnabled, v -> VeloWorldFeatures.blockEspEnabled = v));
         allRows.add(SettingRow.action(Category.FINDER, "Välj ESP-block (Alla)", "Sök bland alla block i Minecraft",
                 () -> "Välj (" + VeloWorldFeatures.selectedEspBlocks.size() + ") →",
@@ -127,72 +160,90 @@ public class VeloMenuScreen extends Screen {
                 }));
         allRows.add(SettingRow.slider(Category.FINDER, "ESP Radie", "Sökradie i block",
                 16f, 80f, "m", () -> (float) VeloWorldFeatures.blockEspRange, v -> VeloWorldFeatures.blockEspRange = Math.round(v)));
-
-        allRows.add(SettingRow.toggle(Category.FINDER, "Base Finder", "Top-popup med storlek, redstone, spawners + outline",
-                () -> VeloWorldFeatures.baseFinderEnabled, v -> {
-                    VeloWorldFeatures.baseFinderEnabled = v;
-                    if (v) VeloWorldFeatures.clearAlerts();
-                }));
-        allRows.add(SettingRow.slider(Category.FINDER, "Bas Kistor/Shulkers", "Antal för bas-varning",
-                2f, 20f, "", () -> (float) VeloWorldFeatures.baseChestThreshold, v -> VeloWorldFeatures.baseChestThreshold = Math.round(v)));
-        allRows.add(SettingRow.slider(Category.FINDER, "Redstone Gräns", "Block för redstone-farm varning",
-                8f, 60f, "", () -> (float) VeloWorldFeatures.redstoneFarmThreshold, v -> VeloWorldFeatures.redstoneFarmThreshold = Math.round(v)));
-
         allRows.add(SettingRow.toggle(Category.FINDER, "Spawner Finder", "Top-popup + glowing outline runt spawners",
                 () -> VeloWorldFeatures.spawnerFinderEnabled, v -> {
                     VeloWorldFeatures.spawnerFinderEnabled = v;
                     if (v) VeloWorldFeatures.clearAlerts();
                 }));
-        allRows.add(SettingRow.mode(Category.FINDER, "Spawner Typ", "Välj vilken mob-spawner som söks",
+        allRows.add(SettingRow.mode(Category.FINDER, "Spawner Typ", "Filtrera vilken mob-spawner som söks",
                 VeloWorldFeatures::getSelectedSpawnerLabel,
                 () -> {
                     VeloWorldFeatures.selectedSpawnerTypeIndex = (VeloWorldFeatures.selectedSpawnerTypeIndex + 1) % VeloWorldFeatures.SPAWNER_TYPES.length;
                     VeloWorldFeatures.clearAlerts();
                 }));
 
-        // Movement
-        allRows.add(SettingRow.toggle(Category.MOVEMENT, "Freecam (F6)", "Flyg fritt med kameran",
+        // PLAYER & CHEST
+        allRows.add(SettingRow.toggle(Category.PLAYER, "ChestCleaner", "Rensar automatiskt bort skräp (cobble/dirt m.m.) ur öppna kistor",
+                () -> VeloUtilityModules.chestCleaner, v -> VeloUtilityModules.chestCleaner = v));
+        allRows.add(SettingRow.toggle(Category.PLAYER, "ChestStealer", "Plockar snabbt allt värdefullt ur öppna kistor",
+                () -> VeloUtilityModules.chestStealer, v -> VeloUtilityModules.chestStealer = v));
+        allRows.add(SettingRow.slider(Category.PLAYER, "Chest Delay", "Fördröjning i ticks mellan klick",
+                1f, 10f, "t", () -> (float) VeloUtilityModules.chestDelayTicks, v -> VeloUtilityModules.chestDelayTicks = Math.round(v)));
+        allRows.add(SettingRow.toggle(Category.PLAYER, "AutoTool", "Byter automatiskt till bästa verktyget i hotbaren",
+                () -> VeloUtilityModules.autoTool, v -> VeloUtilityModules.autoTool = v));
+        allRows.add(SettingRow.toggle(Category.PLAYER, "AutoReplenish", "Fyller på block/mat i hotbaren från inventoryt",
+                () -> VeloUtilityModules.autoReplenish, v -> VeloUtilityModules.autoReplenish = v));
+        allRows.add(SettingRow.toggle(Category.PLAYER, "MiddleClickPearl", "Kasta Ender Pearl direkt med mushjulet",
+                () -> VeloUtilityModules.middleClickPearl, v -> VeloUtilityModules.middleClickPearl = v));
+        allRows.add(SettingRow.toggle(Category.PLAYER, "AutoRespawn", "Respawnar direkt & visar dödskoordinater i popup",
+                () -> VeloUtilityModules.autoRespawn, v -> VeloUtilityModules.autoRespawn = v));
+        allRows.add(SettingRow.toggle(Category.PLAYER, "AntiAFK", "Undvik AFK-kick med subtila rörelser",
+                () -> VeloUtilityModules.antiAfk, v -> VeloUtilityModules.antiAfk = v));
+        allRows.add(SettingRow.toggle(Category.PLAYER, "Totem Warning", "Varnar om du har totem i inventory men inte i offhand",
+                () -> VeloClient.totemWarning, v -> VeloClient.totemWarning = v));
+
+        // VIEWMODEL
+        allRows.add(SettingRow.toggle(Category.VIEWMODEL, "Slow Swing", "Gör hand-svingningen mjuk & långsam",
+                () -> VeloClient.slowSwing, v -> VeloClient.slowSwing = v));
+        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Swing Speed", "Hastighet (6 normal – 30 långsam)",
+                6f, 30f, "", () -> (float) VeloClient.swingDuration, v -> VeloClient.swingDuration = Math.round(v)));
+        allRows.add(SettingRow.toggle(Category.VIEWMODEL, "Custom ViewModel", "Aktivera storlek, position & vinkel på hand/vapen",
+                () -> VeloClient.slimHand, v -> VeloClient.slimHand = v));
+        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Hand Scale", "Storlek på hand & vapen",
+                0.25f, 1.20f, "", () -> VeloClient.handScale, v -> VeloClient.handScale = v));
+        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Offset X", "Flytta i sidled",
+                -0.35f, 0.35f, "", () -> VeloClient.handOffsetX, v -> VeloClient.handOffsetX = v));
+        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Offset Y", "Flytta upp/ner",
+                -0.35f, 0.35f, "", () -> VeloClient.handOffsetY, v -> VeloClient.handOffsetY = v));
+        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Offset Z", "Avstånd från kameran",
+                -0.50f, 0.25f, "", () -> VeloClient.handOffsetZ, v -> VeloClient.handOffsetZ = v));
+        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Rotation X (Pitch)", "Vinkla upp/ner",
+                -45f, 45f, "°", () -> VeloClient.handRotX, v -> VeloClient.handRotX = v));
+        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Rotation Y (Yaw)", "Vrid i sidled",
+                -45f, 45f, "°", () -> VeloClient.handRotY, v -> VeloClient.handRotY = v));
+        allRows.add(SettingRow.slider(Category.VIEWMODEL, "Rotation Z (Roll)", "Luta vapnet/handen",
+                -45f, 45f, "°", () -> VeloClient.handRotZ, v -> VeloClient.handRotZ = v));
+
+        // CAMERA & MOVEMENT
+        allRows.add(SettingRow.toggle(Category.MOVEMENT, "Freecam (F6)", "Flyg fritt med kameran genom världen",
                 FreecamManager::isEnabled, FreecamManager::setEnabled));
         allRows.add(SettingRow.slider(Category.MOVEMENT, "Freecam Speed", "Hastighet i Freecam",
                 0.2f, 3.0f, "x", () -> FreecamManager.speed, v -> FreecamManager.speed = v));
+        allRows.add(SettingRow.toggle(Category.MOVEMENT, "FreeLook (Left Alt)", "Snurra kameran 360° medan du springer rakt fram",
+                () -> FreecamManager.freeLookEnabled, v -> FreecamManager.freeLookEnabled = v));
+        allRows.add(SettingRow.toggle(Category.MOVEMENT, "Smooth Zoom (C)", "Mjuk inzoomning när du håller inne C",
+                () -> VeloUtilityModules.zoomEnabled, v -> VeloUtilityModules.zoomEnabled = v));
+        allRows.add(SettingRow.slider(Category.MOVEMENT, "Zoom FOV", "Hur långt in den zoomar",
+                30f, 60f, "°", () -> (float) VeloUtilityModules.zoomFov, v -> VeloUtilityModules.zoomFov = Math.round(v)));
         allRows.add(SettingRow.toggle(Category.MOVEMENT, "Toggle Sprint", "Automatisk sprint framåt",
                 () -> VeloClient.toggleSprint, v -> VeloClient.toggleSprint = v));
 
-        // Hand & Slow Swing
-        allRows.add(SettingRow.toggle(Category.HAND, "Slow Swing", "Gör hand-svingningen mjuk & långsam",
-                () -> VeloClient.slowSwing, v -> VeloClient.slowSwing = v));
-        allRows.add(SettingRow.slider(Category.HAND, "Swing Speed", "Hastighet (6 normal – 30 långsam)",
-                6f, 30f, "", () -> (float) VeloClient.swingDuration, v -> VeloClient.swingDuration = Math.round(v)));
-        allRows.add(SettingRow.toggle(Category.HAND, "Slim Hand", "Gör handen smalare och renare",
-                () -> VeloClient.slimHand, v -> VeloClient.slimHand = v));
-        allRows.add(SettingRow.slider(Category.HAND, "Hand Scale", "Storlek på hand & vapen",
-                0.30f, 1.00f, "", () -> VeloClient.handScale, v -> VeloClient.handScale = v));
-        allRows.add(SettingRow.slider(Category.HAND, "Hand X-Offset", "Flytta i sidled",
-                -0.30f, 0.35f, "", () -> VeloClient.handOffsetX, v -> VeloClient.handOffsetX = v));
-        allRows.add(SettingRow.slider(Category.HAND, "Hand Y-Offset", "Flytta upp/ner",
-                -0.35f, 0.25f, "", () -> VeloClient.handOffsetY, v -> VeloClient.handOffsetY = v));
-        allRows.add(SettingRow.slider(Category.HAND, "Hand Z-Offset", "Avstånd från kameran",
-                -0.45f, 0.20f, "", () -> VeloClient.handOffsetZ, v -> VeloClient.handOffsetZ = v));
-
-        // Combat & HUD
-        allRows.add(SettingRow.toggle(Category.VISUALS, "Totem Warning", "Varnar om du har totem i inventory men inte i offhand",
-                () -> VeloClient.totemWarning, v -> VeloClient.totemWarning = v));
-        allRows.add(SettingRow.toggle(Category.VISUALS, "VELO HUD", "Visar clean VELO-panel i hörnet",
+        // HUD & THEME
+        allRows.add(SettingRow.action(Category.HUD, "Öppna HUD Editor (H)", "Dra & släpp alla HUD-element fritt på skärmen",
+                () -> "Öppna Editor →",
+                () -> {
+                    if (this.client != null) this.client.setScreen(new VeloHudEditorScreen(this));
+                }));
+        allRows.add(SettingRow.toggle(Category.HUD, "VELO HUD", "Visa/dölj hela HUD-systemet",
                 () -> VeloClient.hudEnabled, v -> VeloClient.hudEnabled = v));
-        allRows.add(SettingRow.toggle(Category.VISUALS, "FPS Counter", "Visar FPS i HUD",
-                () -> VeloClient.showFps, v -> VeloClient.showFps = v));
-        allRows.add(SettingRow.toggle(Category.VISUALS, "Coordinates", "Visar XYZ i HUD",
-                () -> VeloClient.showCoords, v -> VeloClient.showCoords = v));
-
-        // Theme
-        allRows.add(SettingRow.mode(Category.THEME, "Blue Accent", "Välj blå färgnyans",
+        allRows.add(SettingRow.mode(Category.HUD, "Blue Accent Theme", "Byt blå nyans på hela clienten",
                 VeloClient::getThemeName, () -> VeloClient.blueThemeIndex = (VeloClient.blueThemeIndex + 1) % 3));
     }
 
     @Override
     protected void init() {
-        this.winW = Math.min(488, this.width - 24);
-        this.winH = Math.min(292, this.height - 24);
+        this.winW = Math.min(510, this.width - 20);
+        this.winH = Math.min(312, this.height - 20);
         this.winX = (this.width - this.winW) / 2;
         this.winY = (this.height - this.winH) / 2;
 
@@ -202,7 +253,7 @@ public class VeloMenuScreen extends Screen {
         String prevSearch = (searchField != null) ? searchField.getText() : "";
         searchField = new TextFieldWidget(this.textRenderer, contentX + 18, this.winY + 12, contentW - 52, 16, Text.literal("Sök"));
         searchField.setDrawsBackground(false);
-        searchField.setPlaceholder(Text.literal("Sök inställning..."));
+        searchField.setPlaceholder(Text.literal("Sök bland alla moduler..."));
         searchField.setText(prevSearch);
         this.addDrawableChild(searchField);
     }
@@ -225,8 +276,8 @@ public class VeloMenuScreen extends Screen {
 
         int contentX = winX + sidebarW;
         int contentW = winW - sidebarW;
-        int listY = winY + 62;
-        int rowHeight = 40;
+        int listY = winY + 58;
+        int rowHeight = 38;
         int maxBottom = winY + winH - 10;
 
         int maxScroll = Math.max(0, visibleRows.size() * rowHeight - (maxBottom - listY));
@@ -235,11 +286,11 @@ public class VeloMenuScreen extends Screen {
         for (int i = 0; i < visibleRows.size(); i++) {
             SettingRow row = visibleRows.get(i);
             int ry = listY + i * rowHeight - scrollOffset;
-            if (ry >= listY - 4 && ry + rowHeight - 6 <= maxBottom) {
+            if (ry >= listY - 4 && ry + rowHeight - 5 <= maxBottom) {
                 row.rowX = contentX + 12;
                 row.rowY = ry;
                 row.rowW = contentW - 24;
-                row.rowH = rowHeight - 6;
+                row.rowH = rowHeight - 5;
                 row.visibleOnScreen = true;
             }
         }
@@ -247,7 +298,7 @@ public class VeloMenuScreen extends Screen {
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fill(0, 0, this.width, this.height, 0x88040914);
+        context.fill(0, 0, this.width, this.height, 0x88030712);
     }
 
     @Override
@@ -255,18 +306,16 @@ public class VeloMenuScreen extends Screen {
         int primary = VeloClient.getPrimaryBlue();
         int accent = VeloClient.getAccentColor();
 
-        // Anti-aliased modernt huvudfönster
         VeloUiRenderer.drawSmoothPanel(context, winX, winY, winW, winH, 10, 0xEC060C1A, 0x992563EB, true);
-        VeloUiRenderer.drawSmoothRect(context, winX + 1, winY + 1, sidebarW - 1, winH - 2, 0xF2070D1B);
+        VeloUiRenderer.drawSmoothRect(context, winX + 1, winY + 1, sidebarW - 1, winH - 2, 9, 0xF2050A14);
         context.fill(winX + sidebarW, winY + 2, winX + sidebarW + 1, winY + winH - 2, 0xFF1B2B4B);
 
-        context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", winX + 16, winY + 16, accent);
-        context.drawTextWithShadow(this.textRenderer, "§7Clean v1.9", winX + 16, winY + 28, 0xFF64748B);
+        context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", winX + 14, winY + 14, accent);
+        context.drawTextWithShadow(this.textRenderer, "§7v2.0 • Meteor Edition", winX + 14, winY + 26, 0xFF64748B);
 
-        // Sidopanelens kategorier
         Category[] categories = Category.values();
-        int catStartY = winY + 50;
-        int catH = 28;
+        int catStartY = winY + 46;
+        int catH = 26;
         for (int i = 0; i < categories.length; i++) {
             Category cat = categories[i];
             int cy = catStartY + i * (catH + 4);
@@ -276,18 +325,17 @@ public class VeloMenuScreen extends Screen {
             boolean hovered = mouseX >= cx && mouseX <= cx + cw && mouseY >= cy && mouseY <= cy + catH;
 
             if (selected) {
-                VeloUiRenderer.drawSmoothRect(context, cx, cy, cw, catH, 0xFF14233F);
-                context.fill(cx + 2, cy + 6, cx + 4, cy + catH - 6, accent);
+                VeloUiRenderer.drawSmoothRect(context, cx, cy, cw, catH, 6, 0xFF14233F);
+                context.fill(cx + 2, cy + 5, cx + 4, cy + catH - 5, accent);
             } else if (hovered) {
-                VeloUiRenderer.drawSmoothRect(context, cx, cy, cw, catH, 0x8014233F);
+                VeloUiRenderer.drawSmoothRect(context, cx, cy, cw, catH, 6, 0x8014233F);
             }
-            context.drawTextWithShadow(this.textRenderer, cat.label, cx + 12, cy + 10, selected ? 0xFFFFFFFF : 0xFF94A3B8);
+            context.drawTextWithShadow(this.textRenderer, cat.label, cx + 11, cy + 9, selected ? 0xFFFFFFFF : 0xFF94A3B8);
         }
 
-        // Höger innehållsyta
         int contentX = winX + sidebarW;
         int contentW = winW - sidebarW;
-        VeloUiRenderer.drawSmoothPanel(context, contentX + 12, winY + 8, contentW - 40, 20, 0xFF101B33, 0xFF1E3A6E);
+        VeloUiRenderer.drawSmoothPanel(context, contentX + 12, winY + 8, contentW - 40, 20, 6, 0xFF0E182E, 0xFF1E3A6E, false);
 
         int closeX = winX + winW - 22;
         int closeY = winY + 8;
@@ -295,7 +343,7 @@ public class VeloMenuScreen extends Screen {
         context.drawTextWithShadow(this.textRenderer, "✕", closeX + 4, closeY + 6, closeHover ? accent : 0xFF94A3B8);
 
         context.drawTextWithShadow(this.textRenderer, "§l" + selectedCategory.label + "  §b→  §7" + selectedCategory.subLabel,
-                contentX + 14, winY + 40, 0xFFFFFFFF);
+                contentX + 14, winY + 38, 0xFFFFFFFF);
 
         List<SettingRow> visibleRows = getFilteredRows();
         updateRowLayout(visibleRows);
@@ -303,11 +351,12 @@ public class VeloMenuScreen extends Screen {
         for (SettingRow row : visibleRows) {
             if (!row.visibleOnScreen) continue;
             boolean hovered = mouseX >= row.rowX && mouseX <= row.rowX + row.rowW && mouseY >= row.rowY && mouseY <= row.rowY + row.rowH;
-            VeloUiRenderer.drawSmoothPanel(context, row.rowX, row.rowY, row.rowW, row.rowH,
-                    hovered ? 0xFF152440 : 0xCC101A30, hovered ? accent : 0xFF1A2946);
+            VeloUiRenderer.drawSmoothPanel(context, row.rowX, row.rowY, row.rowW, row.rowH, 7,
+                    hovered ? 0xFF14233F : 0xCC0D1629, hovered ? accent : 0xFF1A2946, false);
 
             context.drawTextWithShadow(this.textRenderer, row.name, row.rowX + 10, row.rowY + 6, 0xFFF8FAFC);
-            context.drawTextWithShadow(this.textRenderer, "§7" + row.subtitle, row.rowX + 10, row.rowY + 18, 0xFF64748B);
+            String subTrim = this.textRenderer.trimToWidth(row.subtitle, row.rowW - 120);
+            context.drawTextWithShadow(this.textRenderer, "§7" + subTrim, row.rowX + 10, row.rowY + 18, 0xFF64748B);
 
             if (row.type == RowType.TOGGLE) {
                 boolean active = row.boolGetter.get();
@@ -343,7 +392,7 @@ public class VeloMenuScreen extends Screen {
                 int pillX = row.rowX + row.rowW - pillW - 10;
                 int pillY = row.rowY + (row.rowH - pillH) / 2;
                 int pillFill = (row.type == RowType.ACTION && hovered) ? primary : 0xFF162542;
-                VeloUiRenderer.drawSmoothPanel(context, pillX, pillY, pillW, pillH, pillFill, accent);
+                VeloUiRenderer.drawSmoothPanel(context, pillX, pillY, pillW, pillH, 6, pillFill, accent, false);
                 context.drawTextWithShadow(this.textRenderer, modeVal, pillX + 8, pillY + 5, 0xFFFFFFFF);
             }
         }
@@ -353,24 +402,20 @@ public class VeloMenuScreen extends Screen {
 
     @Override
     public boolean mouseClicked(Click click, boolean doubled) {
-        double mouseX = click.x();
-        double mouseY = click.y();
+        double mouseX = click.x(), mouseY = click.y();
 
         if (click.button() == 0) {
-            int closeX = winX + winW - 22;
-            int closeY = winY + 8;
+            int closeX = winX + winW - 22, closeY = winY + 8;
             if (mouseX >= closeX && mouseX <= closeX + 16 && mouseY >= closeY && mouseY <= closeY + 20) {
                 if (this.client != null) this.client.setScreen(this.parent);
                 return true;
             }
 
             Category[] categories = Category.values();
-            int catStartY = winY + 50;
-            int catH = 28;
+            int catStartY = winY + 46, catH = 26;
             for (int i = 0; i < categories.length; i++) {
                 int cy = catStartY + i * (catH + 4);
-                int cx = winX + 8;
-                int cw = sidebarW - 16;
+                int cx = winX + 8, cw = sidebarW - 16;
                 if (mouseX >= cx && mouseX <= cx + cw && mouseY >= cy && mouseY <= cy + catH) {
                     selectedCategory = categories[i];
                     scrollOffset = 0;
