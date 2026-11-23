@@ -95,9 +95,27 @@ public class VeloWorldFeatures {
     public static boolean breadcrumbs = false;
     public static boolean logoutSpots = false;
 
+    public static class BlockCluster {
+        public final int minX, minY, minZ;
+        public final int maxX, maxY, maxZ;
+        public final int count;
+        public final String label;
+
+        public BlockCluster(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, int count, String label) {
+            this.minX = minX;
+            this.minY = minY;
+            this.minZ = minZ;
+            this.maxX = maxX;
+            this.maxY = maxY;
+            this.maxZ = maxZ;
+            this.count = count;
+            this.label = label;
+        }
+    }
+
     private static final List<BlockPos> espFoundBlocks = new ArrayList<>();
-    private static final List<BlockPos> baseFoundBlocks = new ArrayList<>();
-    private static final List<BlockPos> redstoneFarmBlocks = new ArrayList<>();
+    private static final List<BlockCluster> baseClusters = new ArrayList<>();
+    private static final List<BlockCluster> redstoneClusters = new ArrayList<>();
     private static final List<BlockPos> spawnerFoundBlocks = new ArrayList<>();
 
     private static final Deque<Vec3d> breadcrumbPoints = new ArrayDeque<>();
@@ -129,8 +147,8 @@ public class VeloWorldFeatures {
     public static void tick(MinecraftClient mc) {
         if (mc.player == null || mc.world == null) {
             espFoundBlocks.clear();
-            baseFoundBlocks.clear();
-            redstoneFarmBlocks.clear();
+            baseClusters.clear();
+            redstoneClusters.clear();
             spawnerFoundBlocks.clear();
             breadcrumbPoints.clear();
             trackedPlayers.clear();
@@ -180,11 +198,14 @@ public class VeloWorldFeatures {
         int chunkRadius = Math.min(mc.options.getClampedViewDistance(), 8);
         ChunkPos playerChunk = mc.player.getChunkPos();
 
-        // 1. BASE FINDER & SPAWNER FINDER
+        // 1. BASE FINDER (KLUSTRAD) & SPAWNER FINDER
         if (baseFinderEnabled || spawnerFinderEnabled) {
-            baseFoundBlocks.clear();
-            redstoneFarmBlocks.clear();
+            baseClusters.clear();
+            redstoneClusters.clear();
             spawnerFoundBlocks.clear();
+
+            List<BlockPos> rawBasePositions = new ArrayList<>();
+            List<BlockPos> rawRedstonePositions = new ArrayList<>();
 
             for (int cx = playerChunk.x - chunkRadius; cx <= playerChunk.x + chunkRadius; cx++) {
                 for (int cz = playerChunk.z - chunkRadius; cz <= playerChunk.z + chunkRadius; cz++) {
@@ -210,12 +231,12 @@ public class VeloWorldFeatures {
                                     || block instanceof EnderChestBlock || block instanceof BarrelBlock) {
                                 storageCount++;
                                 if (sampleBasePos == null) sampleBasePos = pos;
-                                baseFoundBlocks.add(pos);
+                                rawBasePositions.add(pos);
                             } else if (block instanceof ShulkerBoxBlock) {
                                 storageCount++;
                                 shulkerCount++;
                                 if (sampleBasePos == null) sampleBasePos = pos;
-                                baseFoundBlocks.add(pos);
+                                rawBasePositions.add(pos);
                             } else if (block instanceof HopperBlock || block instanceof DispenserBlock
                                     || block instanceof DropperBlock || block instanceof ComparatorBlock) {
                                 redstoneBeCount++;
@@ -241,10 +262,7 @@ public class VeloWorldFeatures {
                     if (baseFinderEnabled) {
                         redstoneCount = redstoneBeCount + collectRedstoneInChunk(chunk, chunkRedstonePositions);
                         if (redstoneCount >= redstoneFarmThreshold) {
-                            int cap = Math.min(chunkRedstonePositions.size(), 36);
-                            for (int i = 0; i < cap; i++) {
-                                redstoneFarmBlocks.add(chunkRedstonePositions.get(i));
-                            }
+                            rawRedstonePositions.addAll(chunkRedstonePositions);
                         }
                     }
 
@@ -262,7 +280,7 @@ public class VeloWorldFeatures {
                         if (alertedRedstoneChunks.add(chunkKey)) {
                             int wx = (cx << 4) + 8;
                             int wz = (cz << 4) + 8;
-                            String sizeLabel = redstoneCount >= 50 ? "STOR REDSTONE FARM" : "REDSTONE FARM";
+                            String sizeLabel = redstoneCount >= 50 ? "STOR REDSTONE FARM" : "REDSTONE KLUSTER";
                             String details = redstoneCount + " redstone  •  " + storageCount + " kistor  •  " + chunkSpawnerCount + " spawners";
                             String coords = "Chunk X: " + wx + "  Z: " + wz;
                             showPopup("BASE FINDER", sizeLabel, details, coords, 0xFFFF4D6D);
@@ -281,9 +299,14 @@ public class VeloWorldFeatures {
                     }
                 }
             }
+
+            if (baseFinderEnabled) {
+                baseClusters.addAll(clusterPositions(rawBasePositions, 12, baseChestThreshold, "BAS"));
+                redstoneClusters.addAll(clusterPositions(rawRedstonePositions, 10, 4, "REDSTONE"));
+            }
         } else {
-            baseFoundBlocks.clear();
-            redstoneFarmBlocks.clear();
+            baseClusters.clear();
+            redstoneClusters.clear();
             spawnerFoundBlocks.clear();
         }
 
@@ -313,6 +336,47 @@ public class VeloWorldFeatures {
                 }
             }
         }
+    }
+
+    private static List<BlockCluster> clusterPositions(List<BlockPos> positions, int mergeRadius, int minClusterSize, String prefix) {
+        List<BlockCluster> result = new ArrayList<>();
+        if (positions.isEmpty()) return result;
+        boolean[] visited = new boolean[positions.size()];
+        int maxDistSq = mergeRadius * mergeRadius;
+
+        for (int i = 0; i < positions.size(); i++) {
+            if (visited[i]) continue;
+            visited[i] = true;
+
+            List<BlockPos> group = new ArrayList<>();
+            group.add(positions.get(i));
+            int minX = positions.get(i).getX(), minY = positions.get(i).getY(), minZ = positions.get(i).getZ();
+            int maxX = minX, maxY = minY, maxZ = minZ;
+
+            for (int q = 0; q < group.size(); q++) {
+                BlockPos cur = group.get(q);
+                for (int j = 0; j < positions.size(); j++) {
+                    if (visited[j]) continue;
+                    BlockPos cand = positions.get(j);
+                    if (cur.getSquaredDistance(cand) <= maxDistSq) {
+                        visited[j] = true;
+                        group.add(cand);
+                        if (cand.getX() < minX) minX = cand.getX();
+                        if (cand.getY() < minY) minY = cand.getY();
+                        if (cand.getZ() < minZ) minZ = cand.getZ();
+                        if (cand.getX() > maxX) maxX = cand.getX();
+                        if (cand.getY() > maxY) maxY = cand.getY();
+                        if (cand.getZ() > maxZ) maxZ = cand.getZ();
+                    }
+                }
+            }
+
+            if (group.size() >= minClusterSize) {
+                result.add(new BlockCluster(minX, minY, minZ, maxX, maxY, maxZ, group.size(),
+                        "§l" + prefix + " §r§7(" + group.size() + ")"));
+            }
+        }
+        return result;
     }
 
     private static String classifyBaseSize(int storage, int shulkers, int redstone, int spawners) {
@@ -367,8 +431,8 @@ public class VeloWorldFeatures {
         Vec3d cam = context.worldState().cameraRenderState.pos;
         lastCamPos = cam;
 
-        if (espFoundBlocks.isEmpty() && baseFoundBlocks.isEmpty()
-                && redstoneFarmBlocks.isEmpty() && spawnerFoundBlocks.isEmpty()) {
+        if (espFoundBlocks.isEmpty() && baseClusters.isEmpty()
+                && redstoneClusters.isEmpty() && spawnerFoundBlocks.isEmpty()) {
             return;
         }
 
@@ -388,13 +452,15 @@ public class VeloWorldFeatures {
         }
 
         if (baseFinderEnabled) {
-            for (BlockPos pos : baseFoundBlocks) {
-                VertexRendering.drawOutline(matrices, lineConsumer, VoxelShapes.fullCube(),
-                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z, 0xFFFFB020, 2.2f);
+            for (BlockCluster c : baseClusters) {
+                VertexRendering.drawOutline(matrices, lineConsumer,
+                        VoxelShapes.cuboid(0, 0, 0, c.maxX - c.minX + 1.0, c.maxY - c.minY + 1.0, c.maxZ - c.minZ + 1.0),
+                        c.minX - cam.x, c.minY - cam.y, c.minZ - cam.z, 0xFFFFB020, 2.5f);
             }
-            for (BlockPos pos : redstoneFarmBlocks) {
-                VertexRendering.drawOutline(matrices, lineConsumer, VoxelShapes.fullCube(),
-                        pos.getX() - cam.x, pos.getY() - cam.y, pos.getZ() - cam.z, 0xFFFF4D6D, 2.2f);
+            for (BlockCluster c : redstoneClusters) {
+                VertexRendering.drawOutline(matrices, lineConsumer,
+                        VoxelShapes.cuboid(0, 0, 0, c.maxX - c.minX + 1.0, c.maxY - c.minY + 1.0, c.maxZ - c.minZ + 1.0),
+                        c.minX - cam.x, c.minY - cam.y, c.minZ - cam.z, 0xFFFF4D6D, 2.5f);
             }
         }
 
@@ -460,13 +526,15 @@ public class VeloWorldFeatures {
             }
         }
         if (baseFinderEnabled) {
-            for (BlockPos pos : baseFoundBlocks) {
-                drawModernEspBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, 0xFFFFB020, null,
-                        camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
+            for (BlockCluster c : baseClusters) {
+                drawModernEspBox(ctx, c.minX, c.minY, c.minZ,
+                        c.maxX - c.minX + 1.0, c.maxY - c.minY + 1.0, c.maxZ - c.minZ + 1.0,
+                        0xFFFFB020, c.label, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
             }
-            for (BlockPos pos : redstoneFarmBlocks) {
-                drawModernEspBox(ctx, pos.getX(), pos.getY(), pos.getZ(), 1, 1, 1, 0xFFFF4D6D, null,
-                        camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
+            for (BlockCluster c : redstoneClusters) {
+                drawModernEspBox(ctx, c.minX, c.minY, c.minZ,
+                        c.maxX - c.minX + 1.0, c.maxY - c.minY + 1.0, c.maxZ - c.minZ + 1.0,
+                        0xFFFF4D6D, c.label, camPos, fx, fy, fz, rx, ry, rz, ux, uy, uz, tanHalfFov, aspect, sw, sh, false, mc);
             }
         }
         if (spawnerFinderEnabled) {

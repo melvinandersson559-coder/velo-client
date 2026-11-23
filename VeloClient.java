@@ -80,6 +80,7 @@ public class VeloClient implements ClientModInitializer {
     private static KeyBinding hudEditorKey;
     private static KeyBinding zoomKey;
     private static KeyBinding freeLookKey;
+    private static KeyBinding blockEspKey;
 
     @Override
     public void onInitializeClient() {
@@ -96,6 +97,8 @@ public class VeloClient implements ClientModInitializer {
                 "key.velocli.zoom", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_C, KeyBinding.Category.MISC));
         freeLookKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.velocli.freelook", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_LEFT_ALT, KeyBinding.Category.MISC));
+        blockEspKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.velocli.block_esp", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_R, KeyBinding.Category.MISC));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (openMenuKey.wasPressed()) {
@@ -107,6 +110,20 @@ public class VeloClient implements ClientModInitializer {
             while (hudEditorKey.wasPressed()) {
                 if (client.currentScreen == null) {
                     client.setScreen(new VeloHudEditorScreen(null));
+                }
+            }
+            while (blockEspKey.wasPressed()) {
+                if (client.currentScreen == null) {
+                    VeloWorldFeatures.blockEspEnabled = !VeloWorldFeatures.blockEspEnabled;
+                    boolean on = VeloWorldFeatures.blockEspEnabled;
+                    int count = VeloWorldFeatures.selectedEspBlocks.size();
+                    VeloWorldFeatures.showPopup(
+                            "BLOCK ESP",
+                            on ? "BLOCK ESP: PÅ" : "BLOCK ESP: AV",
+                            on ? (count + " valda blocktyper aktiverade (R)") : "Avstängd med snabbknapp R",
+                            "Tryck Right Shift -> Finder för att välja/resetta block",
+                            on ? getAccentColor() : 0xFF94A3B8
+                    );
                 }
             }
 
@@ -151,7 +168,7 @@ public class VeloClient implements ClientModInitializer {
 
             VeloUiRenderer.drawSmoothPanel(ctx, x, y, 152, 44, 9, COLOR_BG, border, true);
             VeloUiRenderer.drawSmoothRect(ctx, x + 5, y + 8, 2, 28, 1, accent);
-            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§b2.2", x + 13, y + 7, accent);
+            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§b3.0", x + 13, y + 7, accent);
             ctx.drawTextWithShadow(mc.textRenderer, String.format(Locale.ROOT, "§7FPS §f%d  §7•  §f%.1f b/s", mc.getCurrentFps(), bps), x + 13, y + 20, 0xFFE2E8F0);
             ctx.drawTextWithShadow(mc.textRenderer, "§7H: §bHUD Editor  §7RShift: §bMenu", x + 13, y + 31, 0xFF94A3B8);
         }

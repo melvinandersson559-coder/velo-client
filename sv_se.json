@@ -3,5 +3,6 @@
   "key.velocli.freecam": "Växla VELO Freecam",
   "key.velocli.hud_editor": "Öppna VELO HUD Editor",
   "key.velocli.zoom": "VELO Smooth Zoom",
-  "key.velocli.freelook": "VELO FreeLook (360°)"
+  "key.velocli.freelook": "VELO FreeLook (360°)",
+  "key.velocli.block_esp": "Växla VELO Block ESP (R)"
 }
