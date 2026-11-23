@@ -42,8 +42,8 @@ public class VeloBlockPickerScreen extends Screen {
 
     @Override
     protected void init() {
-        this.winW = Math.min(500, this.width - 28);
-        this.winH = Math.min(316, this.height - 28);
+        this.winW = Math.min(680, this.width - 28);
+        this.winH = Math.min(420, this.height - 24);
         this.winX = (this.width - this.winW) / 2;
         this.winY = (this.height - this.winH) / 2;
 
@@ -121,13 +121,13 @@ public class VeloBlockPickerScreen extends Screen {
         int listTop = wy + 66;
         int listBottom = wy + winH - 12;
         int rowH = 28;
-        int cols = 2;
+        int cols = 3;
         int totalRows = (list.size() + cols - 1) / cols;
         float maxScroll = Math.max(0.0f, totalRows * rowH - (listBottom - listTop));
         targetScroll = MathHelper.clamp(targetScroll, 0.0f, maxScroll);
         currentScroll += (targetScroll - currentScroll) * (1.0f - (float) Math.exp(-16.0f * dt));
 
-        int colW = (winW - 32) / cols;
+        int colW = (winW - 40) / cols;
         context.enableScissor(winX + 10, listTop, winX + winW - 10, listBottom);
 
         for (int i = 0; i < list.size(); i++) {
@@ -187,7 +187,7 @@ public class VeloBlockPickerScreen extends Screen {
             int listBottom = winY + winH - 12;
             if (my >= listTop && my <= listBottom) {
                 List<Block> list = getFilteredBlocks();
-                int rowH = 28, cols = 2, colW = (winW - 32) / cols;
+                int rowH = 28, cols = 3, colW = (winW - 40) / cols;
                 for (int i = 0; i < list.size(); i++) {
                     int row = i / cols, col = i % cols;
                     int bx = winX + 12 + col * (colW + 8);

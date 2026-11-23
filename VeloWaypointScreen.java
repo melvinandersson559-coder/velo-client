@@ -21,8 +21,8 @@ public class VeloWaypointScreen extends Screen {
 
     @Override
     protected void init() {
-        this.winW = Math.min(400, this.width - 30);
-        this.winH = Math.min(260, this.height - 30);
+        this.winW = Math.min(560, this.width - 28);
+        this.winH = Math.min(360, this.height - 24);
         this.winX = (this.width - this.winW) / 2;
         this.winY = (this.height - this.winH) / 2;
 

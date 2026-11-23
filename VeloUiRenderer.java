@@ -8,61 +8,20 @@ import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.util.Identifier;
 
 /**
- * Ultra-smooth (512x512) supersamplad SDF UI-renderare utan pixlar:
- * - 512x512 anti-aliased 9-slice rundade paneler & kantlinjer (noll trappsteg)
- * - Subpixel anti-aliased mjuka linjer (drawSmoothLine) & glödande punkter (drawSmoothDot)
- * - Mjuk ambient drop-shadow
+ * VELO 4.0 Architectural Sharp-Edge UI Renderer:
+ * - 100% skarpa 90°-kanter med rakbladstunna 1px kantlinjer och valfria hörnhakar
+ * - Mjuk ambient drop-shadow utan runda kanter
+ * - Subpixel anti-aliased linjer (drawSmoothLine) för 3D glowing outlines utan trappsteg
  */
 public class VeloUiRenderer {
-    private static final Identifier FILL_TEX = Identifier.of(VeloClient.MOD_ID, "dynamic/smooth_fill_512");
-    private static final Identifier BORDER_TEX = Identifier.of(VeloClient.MOD_ID, "dynamic/smooth_border_512");
-    private static final Identifier SHADOW_TEX = Identifier.of(VeloClient.MOD_ID, "dynamic/smooth_shadow_512");
     private static final Identifier DOT_TEX = Identifier.of(VeloClient.MOD_ID, "dynamic/smooth_dot_128");
-
     private static boolean initialized = false;
-    private static final int TEX_SIZE = 512;
-    private static final int CORNER_UV = 128;
     private static final int DOT_SIZE = 128;
 
     public static void ensureInitialized() {
         if (initialized) return;
         initialized = true;
 
-        float half = TEX_SIZE / 2.0f;
-        float radius = 104.0f;
-        float boxHalf = half - radius - 16.0f;
-
-        NativeImage fillImg = new NativeImage(NativeImage.Format.RGBA, TEX_SIZE, TEX_SIZE, false);
-        NativeImage borderImg = new NativeImage(NativeImage.Format.RGBA, TEX_SIZE, TEX_SIZE, false);
-        NativeImage shadowImg = new NativeImage(NativeImage.Format.RGBA, TEX_SIZE, TEX_SIZE, false);
-
-        for (int y = 0; y < TEX_SIZE; y++) {
-            for (int x = 0; x < TEX_SIZE; x++) {
-                float px = Math.abs((x + 0.5f) - half) - boxHalf;
-                float py = Math.abs((y + 0.5f) - half) - boxHalf;
-                float dx = Math.max(px, 0.0f);
-                float dy = Math.max(py, 0.0f);
-                float dist = (float) Math.sqrt(dx * dx + dy * dy) + Math.min(Math.max(px, py), 0.0f) - radius;
-
-                // 1. Silkeslen anti-aliased fyllning (bred SDF-övergång så även små knappar blir helt släta)
-                float fillAlpha = smoothstep(5.5f, -5.5f, dist);
-                int fa = Math.clamp(Math.round(fillAlpha * 255.0f), 0, 255);
-                fillImg.setColorArgb(x, y, (fa << 24) | 0x00FFFFFF);
-
-                // 2. Mjuk anti-aliased hairline-kantlinje
-                float ringDist = Math.abs(dist + 4.5f);
-                float borderAlpha = smoothstep(7.5f, 1.5f, ringDist);
-                int ba = Math.clamp(Math.round(borderAlpha * 255.0f), 0, 255);
-                borderImg.setColorArgb(x, y, (ba << 24) | 0x00FFFFFF);
-
-                // 3. Mjuk drop-shadow
-                float shadowAlpha = (dist <= 0.0f) ? 0.58f : (float) Math.exp(-dist * 0.072f) * 0.58f;
-                int sa = Math.clamp(Math.round(shadowAlpha * 255.0f), 0, 255);
-                shadowImg.setColorArgb(x, y, (sa << 24) | 0x00000000);
-            }
-        }
-
-        // 4. Anti-aliased mjuk cirkel/borste för subpixel-släta linjer utan pixlar
         NativeImage dotImg = new NativeImage(NativeImage.Format.RGBA, DOT_SIZE, DOT_SIZE, false);
         float dotHalf = DOT_SIZE / 2.0f;
         float dotRadius = dotHalf - 10.0f;
@@ -78,9 +37,6 @@ public class VeloUiRenderer {
         }
 
         MinecraftClient mc = MinecraftClient.getInstance();
-        mc.getTextureManager().registerTexture(FILL_TEX, new NativeImageBackedTexture(() -> "velo_fill_512", fillImg));
-        mc.getTextureManager().registerTexture(BORDER_TEX, new NativeImageBackedTexture(() -> "velo_border_512", borderImg));
-        mc.getTextureManager().registerTexture(SHADOW_TEX, new NativeImageBackedTexture(() -> "velo_shadow_512", shadowImg));
         mc.getTextureManager().registerTexture(DOT_TEX, new NativeImageBackedTexture(() -> "velo_dot_128", dotImg));
     }
 
@@ -89,34 +45,68 @@ public class VeloUiRenderer {
         return t * t * (3.0f - 2.0f * t);
     }
 
+    public static void drawSharpRect(DrawContext ctx, int x, int y, int w, int h, int color) {
+        if (w <= 0 || h <= 0 || (color >>> 24) == 0) return;
+        ctx.fill(x, y, x + w, y + h, color);
+    }
+
+    public static void drawSharpPanel(DrawContext ctx, int x, int y, int w, int h, int fillColor, int borderColor, boolean withShadow) {
+        if (w <= 0 || h <= 0) return;
+        if (withShadow && w >= 16 && h >= 12) {
+            ctx.fill(x + 2, y + 2, x + w + 3, y + h + 3, 0x55000000);
+            ctx.fill(x + 1, y + 1, x + w + 2, y + h + 2, 0x44000000);
+        }
+        if ((fillColor >>> 24) > 0) {
+            ctx.fill(x, y, x + w, y + h, fillColor);
+        }
+        if ((borderColor >>> 24) > 0) {
+            drawSharpBorder(ctx, x, y, w, h, borderColor);
+        }
+    }
+
+    public static void drawSharpBorder(DrawContext ctx, int x, int y, int w, int h, int color) {
+        if (w <= 0 || h <= 0 || (color >>> 24) == 0) return;
+        ctx.fill(x, y, x + w, y + 1, color);
+        ctx.fill(x, y + h - 1, x + w, y + h, color);
+        ctx.fill(x, y + 1, x + 1, y + h - 1, color);
+        ctx.fill(x + w - 1, y + 1, x + w, y + h - 1, color);
+    }
+
+    public static void drawCornerTicks(DrawContext ctx, int x, int y, int w, int h, int len, int color) {
+        if (w < len * 2 || h < len * 2 || (color >>> 24) == 0) return;
+        // Top-left
+        ctx.fill(x, y, x + len, y + 1, color);
+        ctx.fill(x, y, x + 1, y + len, color);
+        // Top-right
+        ctx.fill(x + w - len, y, x + w, y + 1, color);
+        ctx.fill(x + w - 1, y, x + w, y + len, color);
+        // Bottom-left
+        ctx.fill(x, y + h - 1, x + len, y + h, color);
+        ctx.fill(x, y + h - len, x + 1, y + h, color);
+        // Bottom-right
+        ctx.fill(x + w - len, y + h - 1, x + w, y + h, color);
+        ctx.fill(x + w - 1, y + h - len, x + w, y + h, color);
+    }
+
+    // Legacy method signatures routed directly to sharp 90° panels (zero rounded blobs)
     public static void drawSmoothRect(DrawContext ctx, int x, int y, int w, int h, int color) {
-        drawSmoothRect(ctx, x, y, w, h, 6, color);
+        drawSharpRect(ctx, x, y, w, h, color);
     }
 
     public static void drawSmoothRect(DrawContext ctx, int x, int y, int w, int h, int cornerRadius, int color) {
-        ensureInitialized();
-        if (w <= 0 || h <= 0) return;
-        drawNineSlice(ctx, FILL_TEX, x, y, w, h, cornerRadius, color);
+        drawSharpRect(ctx, x, y, w, h, color);
     }
 
     public static void drawSmoothPanel(DrawContext ctx, int x, int y, int w, int h, int fillColor, int borderColor) {
-        drawSmoothPanel(ctx, x, y, w, h, 8, fillColor, borderColor, true);
+        drawSharpPanel(ctx, x, y, w, h, fillColor, borderColor, true);
     }
 
     public static void drawSmoothPanel(DrawContext ctx, int x, int y, int w, int h, int cornerRadius, int fillColor, int borderColor, boolean withShadow) {
-        ensureInitialized();
-        if (w <= 0 || h <= 0) return;
-        if (withShadow && w >= 20 && h >= 14) {
-            drawNineSlice(ctx, SHADOW_TEX, x - 4, y - 3, w + 8, h + 9, cornerRadius + 4, 0xAA000000);
-        }
-        drawNineSlice(ctx, FILL_TEX, x, y, w, h, cornerRadius, fillColor);
-        if ((borderColor >>> 24) > 0) {
-            drawNineSlice(ctx, BORDER_TEX, x, y, w, h, cornerRadius, borderColor);
-        }
+        drawSharpPanel(ctx, x, y, w, h, fillColor, borderColor, withShadow);
     }
 
     /**
-     * Ritar en helt slät anti-aliased linje utan pixliga trappsteg.
+     * Subpixel anti-aliased linje för 3D glowing outlines och breadcrumbs utan pixliga trappsteg.
      */
     public static void drawSmoothLine(DrawContext ctx, float x0, float y0, float x1, float y1, float thickness, int color) {
         ensureInitialized();
@@ -136,33 +126,6 @@ public class VeloUiRenderer {
             int px = Math.round(x0 + dx * t - halfSize);
             int py = Math.round(y0 + dy * t - halfSize);
             ctx.drawTexture(RenderPipelines.GUI_TEXTURED, DOT_TEX, px, py, 0, 0, size, size, DOT_SIZE, DOT_SIZE, DOT_SIZE, DOT_SIZE, color);
-        }
-    }
-
-    private static void drawNineSlice(DrawContext ctx, Identifier tex, int x, int y, int w, int h, int targetCorner, int color) {
-        int c = Math.max(1, Math.min(targetCorner, Math.min(w / 2, h / 2)));
-        int mw = w - c * 2;
-        int mh = h - c * 2;
-        int midUv = TEX_SIZE - CORNER_UV * 2;
-
-        // 4 högupplösta anti-aliased hörn (128x128 texels supersamplade)
-        ctx.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x, y, 0, 0, c, c, CORNER_UV, CORNER_UV, TEX_SIZE, TEX_SIZE, color);
-        ctx.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x + w - c, y, TEX_SIZE - CORNER_UV, 0, c, c, CORNER_UV, CORNER_UV, TEX_SIZE, TEX_SIZE, color);
-        ctx.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x, y + h - c, 0, TEX_SIZE - CORNER_UV, c, c, CORNER_UV, CORNER_UV, TEX_SIZE, TEX_SIZE, color);
-        ctx.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x + w - c, y + h - c, TEX_SIZE - CORNER_UV, TEX_SIZE - CORNER_UV, c, c, CORNER_UV, CORNER_UV, TEX_SIZE, TEX_SIZE, color);
-
-        // Kanter
-        if (mw > 0) {
-            ctx.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x + c, y, CORNER_UV, 0, mw, c, midUv, CORNER_UV, TEX_SIZE, TEX_SIZE, color);
-            ctx.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x + c, y + h - c, CORNER_UV, TEX_SIZE - CORNER_UV, mw, c, midUv, CORNER_UV, TEX_SIZE, TEX_SIZE, color);
-        }
-        if (mh > 0) {
-            ctx.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x, y + c, 0, CORNER_UV, c, mh, CORNER_UV, midUv, TEX_SIZE, TEX_SIZE, color);
-            ctx.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x + w - c, y + c, TEX_SIZE - CORNER_UV, CORNER_UV, c, mh, CORNER_UV, midUv, TEX_SIZE, TEX_SIZE, color);
-        }
-        // Mittparti
-        if (mw > 0 && mh > 0) {
-            ctx.drawTexture(RenderPipelines.GUI_TEXTURED, tex, x + c, y + c, CORNER_UV, CORNER_UV, mw, mh, midUv, midUv, TEX_SIZE, TEX_SIZE, color);
         }
     }
 

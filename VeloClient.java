@@ -47,32 +47,34 @@ public class VeloClient implements ClientModInitializer {
     public static float handRotY = 0.0f;
     public static float handRotZ = 0.0f;
 
-    // Blått färgtema (0 = Electric Blue, 1 = Ice Cyan, 2 = Royal Cobalt)
+    // Marinblått & Skiffergrått färgtema (0 = Marine Navy, 1 = Steel Slate, 2 = Deep Admiral)
     public static int blueThemeIndex = 0;
 
-    public static final int COLOR_BG = 0xD4070E1D;
+    public static final int COLOR_BG = 0xE60B0E14;
+    public static final int COLOR_SURFACE = 0xEE111622;
+    public static final int COLOR_SLATE_BORDER = 0xFF242D3F;
 
     public static int getPrimaryBlue() {
         return switch (blueThemeIndex) {
-            case 1 -> 0xFF0284C7;
-            case 2 -> 0xFF1D4ED8;
-            default -> 0xFF2563EB;
+            case 1 -> 0xFF334155; // Steel Slate
+            case 2 -> 0xFF172554; // Deep Admiral Navy
+            default -> 0xFF1E3A8A; // Marine Navy
         };
     }
 
     public static int getAccentColor() {
         return switch (blueThemeIndex) {
-            case 1 -> 0xFF22D3EE;
-            case 2 -> 0xFF60A5FA;
-            default -> 0xFF38BDF8;
+            case 1 -> 0xFF94A3B8; // Crisp Silver-Slate
+            case 2 -> 0xFF60A5FA; // Steel Blue
+            default -> 0xFF3B82F6; // Marine Blue
         };
     }
 
     public static String getThemeName() {
         return switch (blueThemeIndex) {
-            case 1 -> "Ice Cyan";
-            case 2 -> "Royal Cobalt";
-            default -> "Electric Blue";
+            case 1 -> "Steel Slate";
+            case 2 -> "Deep Admiral";
+            default -> "Marine Navy";
         };
     }
 
@@ -156,7 +158,7 @@ public class VeloClient implements ClientModInitializer {
         int sw = mc.getWindow().getScaledWidth();
         int sh = mc.getWindow().getScaledHeight();
         int accent = getAccentColor();
-        int border = (0x88 << 24) | (accent & 0x00FFFFFF);
+        int border = COLOR_SLATE_BORDER;
         VeloConfigManager.ConfigData d = VeloConfigManager.data;
 
         // 1. WATERMARK & STATS (FPS + Speed b/s)
@@ -167,9 +169,9 @@ public class VeloClient implements ClientModInitializer {
             double dz = mc.player.getZ() - mc.player.lastZ;
             double bps = Math.sqrt(dx * dx + dz * dz) * 20.0;
 
-            VeloUiRenderer.drawSmoothPanel(ctx, x, y, 152, 44, 9, COLOR_BG, border, true);
-            VeloUiRenderer.drawSmoothRect(ctx, x + 5, y + 8, 2, 28, 1, accent);
-            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§b3.1", x + 13, y + 7, accent);
+            VeloUiRenderer.drawSharpPanel(ctx, x, y, 152, 44, COLOR_BG, border, true);
+            VeloUiRenderer.drawSharpRect(ctx, x, y, 2, 44, accent);
+            ctx.drawTextWithShadow(mc.textRenderer, "§lVELO §r§94.0", x + 13, y + 7, accent);
             ctx.drawTextWithShadow(mc.textRenderer, String.format(Locale.ROOT, "§7FPS §f%d  §7•  §f%.1f b/s", mc.getCurrentFps(), bps), x + 13, y + 20, 0xFFE2E8F0);
             ctx.drawTextWithShadow(mc.textRenderer, "§7H: §bHUD Editor  §7RShift: §bMenu", x + 13, y + 31, 0xFF94A3B8);
         }

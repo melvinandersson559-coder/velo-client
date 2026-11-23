@@ -1,6 +1,5 @@
 package com.velo.client;
 
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
@@ -14,47 +13,26 @@ import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
 import net.minecraft.text.Text;
 
-import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 /**
- * Ultra-minimalistisk VELO Client startskärm (v3.0):
- * - Helt ren mörk bakgrund utan Minecraft-utseende, med mjuka konturvågor
- * - Geometrisk sexuddig stjärnlogga + "VELO Client"
- * - Rena ramlösa textknappar med mjuk hover-animation
- * - Spelar-skin till höger med användarnamn ovanför
+ * VELO 4.0 Startskärm — Skarpa 90°-kanter, marinblå & skiffergrå arkitektur:
+ * - Djup skiffergrå/marinblå bakgrund med subtilt arkitektoniskt rutnät
+ * - Skarp geometrisk VELO-logga + VELO CLIENT-rubrik
+ * - Skarpa menyknappar med glidande marinblå vänsterindikator vid hover
+ * - 3D-spelarkaraktär på skarp skifferplatta med hörnhakar + hopfällbar servermeny
  */
 public class VeloTitleScreen extends Screen {
 
-    private static class MinimalMenuItem {
+    private static class SharpNavButton {
         int x, y, w, h;
         String label;
         Runnable action;
         float hoverAnim = 0f;
 
-        MinimalMenuItem(int x, int y, int w, int h, String label, Runnable action) {
-            this.x = x;
-            this.y = y;
-            this.w = w;
-            this.h = h;
-            this.label = label;
-            this.action = action;
-        }
-
-        boolean isHovered(double mx, double my) {
-            return mx >= x && mx <= x + w && my >= y && my <= y + h;
-        }
-    }
-
-    private static class ServerActionBtn {
-        int x, y, w, h;
-        String label;
-        Runnable action;
-        float hoverAnim = 0f;
-
-        ServerActionBtn(int x, int y, int w, int h, String label, Runnable action) {
+        SharpNavButton(int x, int y, int w, int h, String label, Runnable action) {
             this.x = x;
             this.y = y;
             this.w = w;
@@ -108,16 +86,15 @@ public class VeloTitleScreen extends Screen {
         }
     }
 
-    private final List<MinimalMenuItem> menuItems = new ArrayList<>();
-    private final List<ServerActionBtn> serverButtons = new ArrayList<>();
+    private final List<SharpNavButton> navButtons = new ArrayList<>();
+    private final List<SharpNavButton> serverButtons = new ArrayList<>();
 
     private boolean serversOpen = false;
     private boolean addingServer = false;
     private TextFieldWidget nameField;
     private TextFieldWidget ipField;
 
-    private float smoothRotation = -22.0f;
-    private float openAnim = 0.0f;
+    private float smoothRotation = -24.0f;
     private long lastFrameNanos = System.nanoTime();
 
     public VeloTitleScreen() {
@@ -127,58 +104,57 @@ public class VeloTitleScreen extends Screen {
     @Override
     protected void init() {
         this.clearChildren();
-        menuItems.clear();
+        navButtons.clear();
         serverButtons.clear();
         FavoriteServerManager.load();
 
-        int leftCenterX = (int) (this.width * 0.38f);
+        int leftCenterX = (int) (this.width * 0.36f);
         int centerY = this.height / 2;
 
-        int itemW = 148;
-        int itemH = 22;
-        int startX = leftCenterX - itemW / 2;
-        int startY = centerY - 6;
-        int gap = 23;
+        int btnW = 196;
+        int btnH = 26;
+        int gap = 6;
+        int startX = leftCenterX - btnW / 2;
+        int startY = centerY - 22;
 
-        menuItems.add(new MinimalMenuItem(startX, startY, itemW, itemH, "Singleplayer", () -> {
+        navButtons.add(new SharpNavButton(startX, startY, btnW, btnH, "SINGLEPLAYER", () -> {
             if (this.client != null) this.client.setScreen(new SelectWorldScreen(this));
         }));
-        menuItems.add(new MinimalMenuItem(startX, startY + gap, itemW, itemH, "Multiplayer", () -> {
+        navButtons.add(new SharpNavButton(startX, startY + (btnH + gap), btnW, btnH, "MULTIPLAYER", () -> {
             if (this.client != null) this.client.setScreen(new MultiplayerScreen(this));
         }));
-        menuItems.add(new MinimalMenuItem(startX, startY + gap * 2, itemW, itemH, "Minecraft Settings", () -> {
-            if (this.client != null) this.client.setScreen(new OptionsScreen(this, this.client.options));
-        }));
-        menuItems.add(new MinimalMenuItem(startX, startY + gap * 3, itemW, itemH, "Client", () -> {
+        navButtons.add(new SharpNavButton(startX, startY + (btnH + gap) * 2, btnW, btnH, "CLIENT MENU", () -> {
             if (this.client != null) this.client.setScreen(new VeloMenuScreen(this));
         }));
-        menuItems.add(new MinimalMenuItem(startX, startY + gap * 4, itemW, itemH, "Quit Game", () -> {
+        navButtons.add(new SharpNavButton(startX, startY + (btnH + gap) * 3, btnW, btnH, "MINECRAFT SETTINGS", () -> {
+            if (this.client != null) this.client.setScreen(new OptionsScreen(this, this.client.options));
+        }));
+        navButtons.add(new SharpNavButton(startX, startY + (btnH + gap) * 4, btnW, btnH, "QUIT GAME", () -> {
             if (this.client != null) this.client.scheduleStop();
         }));
 
-        // Diskret hopfällbar servermeny uppe till höger
         if (serversOpen) {
-            int panelW = 176;
+            int panelW = 186;
             int panelX = this.width - panelW - 18;
-            int panelY = 42;
+            int panelY = 44;
 
-            serverButtons.add(new ServerActionBtn(panelX + 8, panelY + 8, panelW - 16, 18,
-                    addingServer ? "Avbryt" : "+ Lägg till server", () -> {
+            serverButtons.add(new SharpNavButton(panelX + 8, panelY + 8, panelW - 16, 20,
+                    addingServer ? "CANCEL" : "+ ADD SERVER", () -> {
                 addingServer = !addingServer;
                 this.init();
             }));
 
-            int listY = panelY + 32;
+            int listY = panelY + 34;
             if (addingServer) {
-                nameField = new TextFieldWidget(this.textRenderer, panelX + 8, listY, panelW - 16, 16, Text.literal("Namn"));
-                nameField.setPlaceholder(Text.literal("Namn..."));
+                nameField = new TextFieldWidget(this.textRenderer, panelX + 8, listY, panelW - 16, 16, Text.literal("Name"));
+                nameField.setPlaceholder(Text.literal("Server Name..."));
                 this.addDrawableChild(nameField);
 
                 ipField = new TextFieldWidget(this.textRenderer, panelX + 8, listY + 22, panelW - 16, 16, Text.literal("IP"));
-                ipField.setPlaceholder(Text.literal("Server-IP..."));
+                ipField.setPlaceholder(Text.literal("Server Address..."));
                 this.addDrawableChild(ipField);
 
-                serverButtons.add(new ServerActionBtn(panelX + 8, listY + 44, panelW - 16, 18, "Spara", () -> {
+                serverButtons.add(new SharpNavButton(panelX + 8, listY + 44, panelW - 16, 20, "SAVE SERVER", () -> {
                     if (!ipField.getText().isBlank()) {
                         FavoriteServerManager.addServer(nameField.getText(), ipField.getText());
                         addingServer = false;
@@ -191,9 +167,9 @@ public class VeloTitleScreen extends Screen {
                 for (int i = 0; i < maxShown; i++) {
                     final int idx = i;
                     FavoriteServerManager.ServerEntry entry = servers.get(i);
-                    int ry = listY + i * 21;
-                    serverButtons.add(new ServerActionBtn(panelX + 8, ry, panelW - 36, 18, entry.name, () -> connectToServer(entry)));
-                    serverButtons.add(new ServerActionBtn(panelX + panelW - 24, ry, 16, 18, "✕", () -> {
+                    int ry = listY + i * 24;
+                    serverButtons.add(new SharpNavButton(panelX + 8, ry, panelW - 38, 20, entry.name, () -> connectToServer(entry)));
+                    serverButtons.add(new SharpNavButton(panelX + panelW - 26, ry, 18, 20, "✕", () -> {
                         FavoriteServerManager.removeServer(idx);
                         this.init();
                     }));
@@ -212,29 +188,16 @@ public class VeloTitleScreen extends Screen {
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Minimalistisk matt mörkgrå/obsidian bakgrund (helt utan Minecraft-känsla)
-        context.fillGradient(0, 0, this.width, this.height, 0xFF14161B, 0xFF1C1F26);
+        // Djup skiffergrå & marinblå bakgrund
+        context.fillGradient(0, 0, this.width, this.height, 0xFF0A0D13, 0xFF101624);
 
-        // Mjuka kontur-vågor uppe till vänster och nere till höger (som i inspirationsbilden)
-        for (int i = 0; i < 6; i++) {
-            int r = 135 - i * 18;
-            int alpha = 10 + i * 3;
-            int col = (alpha << 24) | 0x9CA3AF;
-            drawCornerWaveArc(context, 0, 0, r, col, true);
-            drawCornerWaveArc(context, this.width, this.height, r + 25, col, false);
+        // Diskret arkitektoniskt rutnät
+        int gridCol = 0x1094A3B8;
+        for (int x = 0; x < this.width; x += 48) {
+            context.fill(x, 0, x + 1, this.height, gridCol);
         }
-    }
-
-    private void drawCornerWaveArc(DrawContext ctx, int originX, int originY, int radius, int color, boolean topLeft) {
-        int steps = 28;
-        for (int s = 0; s < steps; s++) {
-            double a0 = (Math.PI * 0.5) * s / steps;
-            double a1 = (Math.PI * 0.5) * (s + 1) / steps;
-            int x0 = topLeft ? (int) (originX + Math.cos(a0) * radius) : (int) (originX - Math.cos(a0) * radius);
-            int y0 = topLeft ? (int) (originY + Math.sin(a0) * radius) : (int) (originY - Math.sin(a0) * radius);
-            int x1 = topLeft ? (int) (originX + Math.cos(a1) * radius) : (int) (originX - Math.cos(a1) * radius);
-            int y1 = topLeft ? (int) (originY + Math.sin(a1) * radius) : (int) (originY - Math.sin(a1) * radius);
-            drawThinLine(ctx, x0, y0, x1, y1, color);
+        for (int y = 0; y < this.height; y += 48) {
+            context.fill(0, y, this.width, y + 1, gridCol);
         }
     }
 
@@ -245,122 +208,102 @@ public class VeloTitleScreen extends Screen {
         lastFrameNanos = now;
 
         float fastSmooth = 1.0f - (float) Math.exp(-15.0f * dt);
-        openAnim += (1.0f - openAnim) * fastSmooth;
-        smoothRotation = (smoothRotation + dt * 28.0f) % 360.0f;
+        smoothRotation = (smoothRotation + dt * 26.0f) % 360.0f;
+
+        int accent = VeloClient.getAccentColor();
+        int primary = VeloClient.getPrimaryBlue();
 
         MinecraftClient mc = MinecraftClient.getInstance();
         String playerName = mc.getSession().getUsername();
 
-        int leftCenterX = (int) (this.width * 0.38f);
+        int leftCenterX = (int) (this.width * 0.36f);
         int centerY = this.height / 2;
 
-        // 1. Geometrisk sexuddig stjärn-logga ovanför titeln
-        int logoY = centerY - 62;
-        drawMinimalHexagramLogo(context, leftCenterX, logoY, 17, 0xFFF3F4F6);
+        // Skarp geometrisk VELO-emblem + rubrik
+        int logoSize = 26;
+        int logoX = leftCenterX - logoSize / 2;
+        int logoY = centerY - 82;
+        VeloUiRenderer.drawSharpPanel(context, logoX, logoY, logoSize, logoSize, primary, accent, true);
+        VeloUiRenderer.drawCornerTicks(context, logoX - 3, logoY - 3, logoSize + 6, logoSize + 6, 4, accent);
+        context.drawCenteredTextWithShadow(this.textRenderer, "§lV", leftCenterX, logoY + 9, 0xFFF1F5F9);
 
-        // 2. Clean bold "VELO Client" titel
-        context.drawCenteredTextWithShadow(this.textRenderer, "§lVELO Client", leftCenterX, centerY - 34, 0xFFF9FAFB);
+        context.drawCenteredTextWithShadow(this.textRenderer, "§lVELO CLIENT", leftCenterX, centerY - 46, 0xFFF1F5F9);
+        VeloUiRenderer.drawSharpRect(context, leftCenterX - 32, centerY - 34, 64, 1, accent);
 
-        // 3. Ramlösa minimalistiska meny-alternativ med mjuk hover-animation
-        for (MinimalMenuItem item : menuItems) {
-            boolean hovered = item.isHovered(mouseX, mouseY);
-            item.hoverAnim += ((hovered ? 1.0f : 0.0f) - item.hoverAnim) * fastSmooth;
+        // Skarpa menyknappar med marinblå hover-indikator
+        for (SharpNavButton btn : navButtons) {
+            boolean hovered = btn.isHovered(mouseX, mouseY);
+            btn.hoverAnim += ((hovered ? 1.0f : 0.0f) - btn.hoverAnim) * fastSmooth;
 
-            int textColor = VeloUiRenderer.lerpColor(0xFF9CA3AF, 0xFFFFFFFF, item.hoverAnim);
-            int textY = item.y + (item.h - 8) / 2;
-            context.drawCenteredTextWithShadow(this.textRenderer, item.label, item.x + item.w / 2, textY, textColor);
+            int fill = VeloUiRenderer.lerpColor(0xDD111622, 0xEE162136, btn.hoverAnim);
+            int border = VeloUiRenderer.lerpColor(0xFF222A3A, accent, btn.hoverAnim);
+            VeloUiRenderer.drawSharpPanel(context, btn.x, btn.y, btn.w, btn.h, fill, border, false);
 
-            // Tunn vit indikatorlinje under texten vid hover
-            if (item.hoverAnim > 0.03f) {
-                int lineW = Math.round(36 * item.hoverAnim);
-                int lineAlpha = Math.round(210 * item.hoverAnim);
-                int lineCol = (lineAlpha << 24) | 0xF3F4F6;
-                context.fill((item.x + item.w / 2) - lineW / 2, textY + 11, (item.x + item.w / 2) + lineW / 2, textY + 12, lineCol);
+            if (btn.hoverAnim > 0.02f) {
+                int barH = Math.max(2, Math.round(btn.h * btn.hoverAnim));
+                int barY = btn.y + (btn.h - barH) / 2;
+                VeloUiRenderer.drawSharpRect(context, btn.x, barY, 2, barH, accent);
             }
+
+            int textCol = VeloUiRenderer.lerpColor(0xFF94A3B8, 0xFFF1F5F9, btn.hoverAnim);
+            context.drawCenteredTextWithShadow(this.textRenderer, btn.label, btn.x + btn.w / 2, btn.y + (btn.h - 8) / 2, textCol);
         }
 
-        // 4. Spelarkaraktär till höger med användarnamn ovanför (precis som i inspirationsbilden)
-        int avatarX = (int) (this.width * 0.72f);
-        int avatarY = centerY + 26;
-        context.drawCenteredTextWithShadow(this.textRenderer, "§f" + playerName + " §7▾", avatarX, avatarY - 76, 0xFFE5E7EB);
-        renderTrue3DPlayer(context, avatarX, avatarY, playerName, smoothRotation);
+        // Höger sida: 3D-spelarkaraktär på skarp skifferplatta
+        int avatarX = (int) (this.width * 0.70f);
+        int avatarY = centerY + 18;
+        int tagW = Math.max(96, this.textRenderer.getWidth(playerName) + 24);
+        VeloUiRenderer.drawSharpPanel(context, avatarX - tagW / 2, avatarY - 82, tagW, 18, 0xDD111622, 0xFF222A3A, false);
+        VeloUiRenderer.drawSharpRect(context, avatarX - tagW / 2, avatarY - 82, 2, 18, accent);
+        context.drawCenteredTextWithShadow(this.textRenderer, playerName, avatarX, avatarY - 77, 0xFFF1F5F9);
 
-        // 5. Minimalistisk server-knapp uppe till höger
-        int srvBtnW = 84;
+        renderTrue3DPlayer(context, avatarX, avatarY, playerName, smoothRotation, accent);
+
+        // Top-right Servers Drawer Button
+        int srvBtnW = 92;
         int srvBtnX = this.width - srvBtnW - 18;
         int srvBtnY = 16;
-        boolean srvHover = mouseX >= srvBtnX && mouseX <= srvBtnX + srvBtnW && mouseY >= srvBtnY && mouseY <= srvBtnY + 20;
-        VeloUiRenderer.drawSmoothPanel(context, srvBtnX, srvBtnY, srvBtnW, 20, 6,
-                srvHover ? 0xCC262A34 : 0x991A1D24, 0x449CA3AF, false);
-        context.drawCenteredTextWithShadow(this.textRenderer, "Servers " + (serversOpen ? "▴" : "▾"),
-                srvBtnX + srvBtnW / 2, srvBtnY + 6, 0xFFD1D5DB);
+        boolean srvHover = mouseX >= srvBtnX && mouseX <= srvBtnX + srvBtnW && mouseY >= srvBtnY && mouseY <= srvBtnY + 22;
+        VeloUiRenderer.drawSharpPanel(context, srvBtnX, srvBtnY, srvBtnW, 22,
+                srvHover ? primary : 0xDD111622, srvHover ? accent : 0xFF222A3A, false);
+        context.drawCenteredTextWithShadow(this.textRenderer, "SERVERS " + (serversOpen ? "▴" : "▾"),
+                srvBtnX + srvBtnW / 2, srvBtnY + 7, 0xFFF1F5F9);
 
         if (serversOpen) {
-            int panelW = 176;
+            int panelW = 186;
             int panelX = this.width - panelW - 18;
-            int panelY = 42;
-            int panelH = addingServer ? 104 : (40 + Math.min(FavoriteServerManager.getServers().size(), 4) * 21);
-            VeloUiRenderer.drawSmoothPanel(context, panelX, panelY, panelW, panelH, 8, 0xE6181B22, 0x449CA3AF, true);
+            int panelY = 44;
+            int panelH = addingServer ? 108 : (42 + Math.min(FavoriteServerManager.getServers().size(), 4) * 24);
+            VeloUiRenderer.drawSharpPanel(context, panelX, panelY, panelW, panelH, 0xF00E121A, 0xFF303B52, true);
 
-            for (ServerActionBtn sb : serverButtons) {
+            for (SharpNavButton sb : serverButtons) {
                 boolean hov = sb.isHovered(mouseX, mouseY);
                 sb.hoverAnim += ((hov ? 1.0f : 0.0f) - sb.hoverAnim) * fastSmooth;
-                int fill = VeloUiRenderer.lerpColor(0x88222630, 0xDD323846, sb.hoverAnim);
-                VeloUiRenderer.drawSmoothPanel(context, sb.x, sb.y, sb.w, sb.h, 5, fill, 0x33FFFFFF, false);
-                context.drawCenteredTextWithShadow(this.textRenderer, sb.label, sb.x + sb.w / 2, sb.y + 5,
-                        hov ? 0xFFFFFFFF : 0xFFD1D5DB);
+                int fill = VeloUiRenderer.lerpColor(0xFF131823, primary, sb.hoverAnim);
+                int border = VeloUiRenderer.lerpColor(0xFF222A3A, accent, sb.hoverAnim);
+                VeloUiRenderer.drawSharpPanel(context, sb.x, sb.y, sb.w, sb.h, fill, border, false);
+                context.drawCenteredTextWithShadow(this.textRenderer, sb.label, sb.x + sb.w / 2, sb.y + 6,
+                        hov ? 0xFFF1F5F9 : 0xFF94A3B8);
             }
         }
 
-        // Diskret versionstext längst ner till vänster
-        context.drawText(this.textRenderer, "VELO 3.1", 14, this.height - 18, 0xFF4B5563, false);
+        context.drawText(this.textRenderer, "VELO CLIENT  //  4.0", 16, this.height - 18, 0xFF475569, false);
 
         super.render(context, mouseX, mouseY, delta);
     }
 
-    private void drawMinimalHexagramLogo(DrawContext ctx, int cx, int cy, int r, int color) {
-        // Två överlappande liksidiga trianglar (geometrisk stjärnsymbol)
-        int[] upX = new int[3];
-        int[] upY = new int[3];
-        int[] dnX = new int[3];
-        int[] dnY = new int[3];
-
-        for (int i = 0; i < 3; i++) {
-            double aUp = Math.toRadians(-90 + i * 120);
-            upX[i] = cx + (int) Math.round(Math.cos(aUp) * r);
-            upY[i] = cy + (int) Math.round(Math.sin(aUp) * r);
-
-            double aDn = Math.toRadians(90 + i * 120);
-            dnX[i] = cx + (int) Math.round(Math.cos(aDn) * r);
-            dnY[i] = cy + (int) Math.round(Math.sin(aDn) * r);
-        }
-
-        for (int i = 0; i < 3; i++) {
-            int next = (i + 1) % 3;
-            drawThickLine(ctx, upX[i], upY[i], upX[next], upY[next], color);
-            drawThickLine(ctx, dnX[i], dnY[i], dnX[next], dnY[next], color);
-        }
-    }
-
-    private void drawThickLine(DrawContext ctx, int x0, int y0, int x1, int y1, int color) {
-        VeloUiRenderer.drawSmoothLine(ctx, x0, y0, x1, y1, 2.2f, color);
-    }
-
-    private void drawThinLine(DrawContext ctx, int x0, int y0, int x1, int y1, int color) {
-        VeloUiRenderer.drawSmoothLine(ctx, x0, y0, x1, y1, 1.4f, color);
-    }
-
-    private void renderTrue3DPlayer(DrawContext ctx, int centerX, int centerY, String playerName, float angleDeg) {
+    private void renderTrue3DPlayer(DrawContext ctx, int centerX, int centerY, String playerName, float angleDeg, int accent) {
         int[][] skin = PlayerSkinCache.getSkinPixels(playerName);
         boolean is64 = skin != null && skin[0].length >= 64;
 
         double rad = Math.toRadians(angleDeg);
         float cos = (float) Math.cos(rad);
         float sin = (float) Math.sin(rad);
-        float scale = 3.8f;
+        float scale = 3.9f;
 
-        // Mjuk oval skugga under fötterna
-        VeloUiRenderer.drawSmoothPanel(ctx, centerX - 34, centerY + 58, 68, 8, 4, 0x55000000, 0x22FFFFFF, false);
+        // Skarp skifferplatta under fötterna med hörnhakar
+        VeloUiRenderer.drawSharpPanel(ctx, centerX - 38, centerY + 60, 76, 8, 0xCC111622, 0xFF222A3A, false);
+        VeloUiRenderer.drawCornerTicks(ctx, centerX - 40, centerY + 58, 80, 12, 4, accent);
 
         List<BodyBox> parts = new ArrayList<>();
         parts.add(new BodyBox(0, -12, 0, 8, 8, 8,
@@ -493,24 +436,24 @@ public class VeloTitleScreen extends Screen {
         if (click.button() == 0) {
             double mx = click.x(), my = click.y();
 
-            int srvBtnW = 84;
+            int srvBtnW = 92;
             int srvBtnX = this.width - srvBtnW - 18;
             int srvBtnY = 16;
-            if (mx >= srvBtnX && mx <= srvBtnX + srvBtnW && my >= srvBtnY && my <= srvBtnY + 20) {
+            if (mx >= srvBtnX && mx <= srvBtnX + srvBtnW && my >= srvBtnY && my <= srvBtnY + 22) {
                 serversOpen = !serversOpen;
                 this.init();
                 return true;
             }
 
-            for (MinimalMenuItem item : menuItems) {
-                if (item.isHovered(mx, my)) {
-                    item.action.run();
+            for (SharpNavButton btn : navButtons) {
+                if (btn.isHovered(mx, my)) {
+                    btn.action.run();
                     return true;
                 }
             }
 
             if (serversOpen) {
-                for (ServerActionBtn sb : serverButtons) {
+                for (SharpNavButton sb : serverButtons) {
                     if (sb.isHovered(mx, my)) {
                         sb.action.run();
                         return true;
