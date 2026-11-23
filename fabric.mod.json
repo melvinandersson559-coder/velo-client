@@ -3,7 +3,7 @@
   "id": "velocli",
   "version": "${version}",
   "name": "VELO Client",
-  "description": "VELO Client 1.6.0 - Modern blaa ClickGUI, Slim Hand, Freecam, VELO Title Screen, favoritservrar och HUD.",
+  "description": "VELO Client 1.7.0 - Clean Smooth UI, ClickGUI, Block ESP, Base Finder, Spawner Finder, Freecam, Slim Hand och HUD.",
   "authors": ["VELO"],
   "environment": "client",
   "entrypoints": {

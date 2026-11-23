@@ -17,7 +17,8 @@ public class VeloMenuScreen extends Screen {
     private final Screen parent;
 
     private enum Category {
-        MOVEMENT("Movement", "Player & Camera"),
+        MOVEMENT("Movement", "Player & Freecam"),
+        FINDER("Finder & ESP", "Block ESP, Base & Spawner"),
         VISUALS("Visuals", "HUD & Overlay"),
         HAND("Hand", "Viewmodel"),
         THEME("Theme", "Blue Appearance");
@@ -32,9 +33,7 @@ public class VeloMenuScreen extends Screen {
     }
 
     private enum RowType {
-        TOGGLE,
-        SLIDER,
-        MODE
+        TOGGLE, SLIDER, MODE
     }
 
     private static class SettingRow {
@@ -45,21 +44,22 @@ public class VeloMenuScreen extends Screen {
 
         Supplier<Boolean> boolGetter;
         Consumer<Boolean> boolSetter;
-
         Supplier<Float> floatGetter;
         Consumer<Float> floatSetter;
         float minVal, maxVal;
         String suffix;
-
         Supplier<String> modeGetter;
         Runnable modeCycler;
 
         int rowX, rowY, rowW, rowH;
+        boolean visibleOnScreen = false;
+        float toggleAnim = 0f;
 
         static SettingRow toggle(Category cat, String name, String subtitle, Supplier<Boolean> get, Consumer<Boolean> set) {
             SettingRow r = new SettingRow(cat, name, subtitle, RowType.TOGGLE);
             r.boolGetter = get;
             r.boolSetter = set;
+            r.toggleAnim = get.get() ? 1f : 0f;
             return r;
         }
 
@@ -88,14 +88,14 @@ public class VeloMenuScreen extends Screen {
         }
     }
 
-    private Category selectedCategory = Category.MOVEMENT;
+    private Category selectedCategory = Category.FINDER;
     private TextFieldWidget searchField;
     private final List<SettingRow> allRows = new ArrayList<>();
     private SettingRow draggingSlider = null;
 
-    // Layout-koordinater
     private int winX, winY, winW, winH;
-    private int sidebarW = 128;
+    private final int sidebarW = 132;
+    private int scrollOffset = 0;
 
     public VeloMenuScreen() {
         this(null);
@@ -110,100 +110,72 @@ public class VeloMenuScreen extends Screen {
     private void buildRows() {
         allRows.clear();
 
-        // Movement & Camera
-        allRows.add(SettingRow.toggle(
-                Category.MOVEMENT,
-                "Freecam (F6)",
-                "Flyg fritt med kameran utan att flytta spelaren",
-                FreecamManager::isEnabled,
-                FreecamManager::setEnabled
-        ));
-        allRows.add(SettingRow.slider(
-                Category.MOVEMENT,
-                "Freecam Speed",
-                "Hastighet när du flyger i Freecam",
-                0.2f, 3.0f, "x",
-                () -> FreecamManager.speed,
-                val -> FreecamManager.speed = val
-        ));
-        allRows.add(SettingRow.toggle(
-                Category.MOVEMENT,
-                "Toggle Sprint",
-                "Håller sprint aktiv automatiskt när du går framåt",
-                () -> VeloClient.toggleSprint,
-                val -> VeloClient.toggleSprint = val
-        ));
+        // Movement
+        allRows.add(SettingRow.toggle(Category.MOVEMENT, "Freecam (F6)", "Flyg fritt med kameran",
+                FreecamManager::isEnabled, FreecamManager::setEnabled));
+        allRows.add(SettingRow.slider(Category.MOVEMENT, "Freecam Speed", "Hastighet i Freecam",
+                0.2f, 3.0f, "x", () -> FreecamManager.speed, v -> FreecamManager.speed = v));
+        allRows.add(SettingRow.toggle(Category.MOVEMENT, "Toggle Sprint", "Automatisk sprint framåt",
+                () -> VeloClient.toggleSprint, v -> VeloClient.toggleSprint = v));
 
-        // Visuals (HUD)
-        allRows.add(SettingRow.toggle(
-                Category.VISUALS,
-                "VELO HUD",
-                "Visar den blå VELO-panelen uppe till vänster",
-                () -> VeloClient.hudEnabled,
-                val -> VeloClient.hudEnabled = val
-        ));
-        allRows.add(SettingRow.toggle(
-                Category.VISUALS,
-                "FPS Counter",
-                "Visar nuvarande bildfrekvens (FPS) i HUD",
-                () -> VeloClient.showFps,
-                val -> VeloClient.showFps = val
-        ));
-        allRows.add(SettingRow.toggle(
-                Category.VISUALS,
-                "Coordinates",
-                "Visar dina XYZ-koordinater i HUD",
-                () -> VeloClient.showCoords,
-                val -> VeloClient.showCoords = val
-        ));
+        // Finder & ESP
+        allRows.add(SettingRow.toggle(Category.FINDER, "Block ESP", "Visar 3D-outline runt valt block",
+                () -> VeloWorldFeatures.blockEspEnabled, v -> VeloWorldFeatures.blockEspEnabled = v));
+        allRows.add(SettingRow.mode(Category.FINDER, "ESP Block", "Klicka för att byta block",
+                VeloWorldFeatures::getSelectedEspBlockName,
+                () -> VeloWorldFeatures.selectedEspBlockIndex = (VeloWorldFeatures.selectedEspBlockIndex + 1) % VeloWorldFeatures.ESP_BLOCKS.length));
+        allRows.add(SettingRow.slider(Category.FINDER, "ESP Radie", "Sökradie i block",
+                16f, 80f, "m", () -> (float) VeloWorldFeatures.blockEspRange, v -> VeloWorldFeatures.blockEspRange = Math.round(v)));
 
-        // Hand / Viewmodel (så handen inte är fet)
-        allRows.add(SettingRow.toggle(
-                Category.HAND,
-                "Slim Hand",
-                "Gör handen och vapen smalare och snyggare",
-                () -> VeloClient.slimHand,
-                val -> VeloClient.slimHand = val
-        ));
-        allRows.add(SettingRow.slider(
-                Category.HAND,
-                "Hand Scale",
-                "Storlek på din hand och dina föremål",
-                0.40f, 1.00f, "",
-                () -> VeloClient.handScale,
-                val -> VeloClient.handScale = val
-        ));
-        allRows.add(SettingRow.slider(
-                Category.HAND,
-                "Hand X-Offset",
-                "Flytta handen i sidled",
-                -0.25f, 0.25f, "",
-                () -> VeloClient.handOffsetX,
-                val -> VeloClient.handOffsetX = val
-        ));
-        allRows.add(SettingRow.slider(
-                Category.HAND,
-                "Hand Y-Offset",
-                "Flytta handen uppåt eller nedåt",
-                -0.25f, 0.25f, "",
-                () -> VeloClient.handOffsetY,
-                val -> VeloClient.handOffsetY = val
-        ));
+        allRows.add(SettingRow.toggle(Category.FINDER, "Base Finder", "Varnar för baser & redstone-farms",
+                () -> VeloWorldFeatures.baseFinderEnabled, v -> {
+                    VeloWorldFeatures.baseFinderEnabled = v;
+                    if (v) VeloWorldFeatures.clearAlerts();
+                }));
+        allRows.add(SettingRow.slider(Category.FINDER, "Bas Kistor/Shulkers", "Antal för bas-varning",
+                2f, 20f, "", () -> (float) VeloWorldFeatures.baseChestThreshold, v -> VeloWorldFeatures.baseChestThreshold = Math.round(v)));
+        allRows.add(SettingRow.slider(Category.FINDER, "Redstone Gräns", "Block för redstone-farm varning",
+                8f, 60f, "", () -> (float) VeloWorldFeatures.redstoneFarmThreshold, v -> VeloWorldFeatures.redstoneFarmThreshold = Math.round(v)));
 
-        // Theme (Blå nyanser)
-        allRows.add(SettingRow.mode(
-                Category.THEME,
-                "Blue Accent",
-                "Välj blå färgnyans för hela VELO Client",
-                VeloClient::getThemeName,
-                () -> VeloClient.blueThemeIndex = (VeloClient.blueThemeIndex + 1) % 3
-        ));
+        allRows.add(SettingRow.toggle(Category.FINDER, "Spawner Finder", "Hittar och markerar spawners",
+                () -> VeloWorldFeatures.spawnerFinderEnabled, v -> {
+                    VeloWorldFeatures.spawnerFinderEnabled = v;
+                    if (v) VeloWorldFeatures.clearAlerts();
+                }));
+        allRows.add(SettingRow.mode(Category.FINDER, "Spawner Typ", "Välj vilken mob-spawner som söks",
+                VeloWorldFeatures::getSelectedSpawnerLabel,
+                () -> {
+                    VeloWorldFeatures.selectedSpawnerTypeIndex = (VeloWorldFeatures.selectedSpawnerTypeIndex + 1) % VeloWorldFeatures.SPAWNER_TYPES.length;
+                    VeloWorldFeatures.clearAlerts();
+                }));
+
+        // Visuals
+        allRows.add(SettingRow.toggle(Category.VISUALS, "VELO HUD", "Visar blå VELO-panel i hörnet",
+                () -> VeloClient.hudEnabled, v -> VeloClient.hudEnabled = v));
+        allRows.add(SettingRow.toggle(Category.VISUALS, "FPS Counter", "Visar FPS i HUD",
+                () -> VeloClient.showFps, v -> VeloClient.showFps = v));
+        allRows.add(SettingRow.toggle(Category.VISUALS, "Coordinates", "Visar XYZ i HUD",
+                () -> VeloClient.showCoords, v -> VeloClient.showCoords = v));
+
+        // Hand
+        allRows.add(SettingRow.toggle(Category.HAND, "Slim Hand", "Gör handen smalare och renare",
+                () -> VeloClient.slimHand, v -> VeloClient.slimHand = v));
+        allRows.add(SettingRow.slider(Category.HAND, "Hand Scale", "Storlek på hand/vapen",
+                0.40f, 1.00f, "", () -> VeloClient.handScale, v -> VeloClient.handScale = v));
+        allRows.add(SettingRow.slider(Category.HAND, "Hand X-Offset", "Flytta i sidled",
+                -0.25f, 0.25f, "", () -> VeloClient.handOffsetX, v -> VeloClient.handOffsetX = v));
+        allRows.add(SettingRow.slider(Category.HAND, "Hand Y-Offset", "Flytta upp/ner",
+                -0.25f, 0.25f, "", () -> VeloClient.handOffsetY, v -> VeloClient.handOffsetY = v));
+
+        // Theme
+        allRows.add(SettingRow.mode(Category.THEME, "Blue Accent", "Välj blå färgnyans",
+                VeloClient::getThemeName, () -> VeloClient.blueThemeIndex = (VeloClient.blueThemeIndex + 1) % 3));
     }
 
     @Override
     protected void init() {
-        this.winW = Math.min(460, this.width - 24);
-        this.winH = Math.min(265, this.height - 24);
+        this.winW = Math.min(480, this.width - 24);
+        this.winH = Math.min(285, this.height - 24);
         this.winX = (this.width - this.winW) / 2;
         this.winY = (this.height - this.winH) / 2;
 
@@ -211,27 +183,54 @@ public class VeloMenuScreen extends Screen {
         int contentW = this.winW - this.sidebarW;
 
         String prevSearch = (searchField != null) ? searchField.getText() : "";
-        searchField = new TextFieldWidget(
-                this.textRenderer,
-                contentX + 30,
-                this.winY + 12,
-                contentW - 64,
-                16,
-                Text.literal("Search element")
-        );
+        searchField = new TextFieldWidget(this.textRenderer, contentX + 18, this.winY + 12, contentW - 52, 16, Text.literal("Sök"));
         searchField.setDrawsBackground(false);
-        searchField.setPlaceholder(Text.literal("Search element..."));
+        searchField.setPlaceholder(Text.literal("Sök inställning..."));
         searchField.setText(prevSearch);
         this.addDrawableChild(searchField);
     }
 
+    private List<SettingRow> getFilteredRows() {
+        String query = (searchField != null) ? searchField.getText().trim().toLowerCase(Locale.ROOT) : "";
+        List<SettingRow> list = new ArrayList<>();
+        for (SettingRow row : allRows) {
+            if (query.isEmpty()) {
+                if (row.category == selectedCategory) list.add(row);
+            } else if (row.name.toLowerCase(Locale.ROOT).contains(query) || row.subtitle.toLowerCase(Locale.ROOT).contains(query)) {
+                list.add(row);
+            }
+        }
+        return list;
+    }
+
+    private void updateRowLayout(List<SettingRow> visibleRows) {
+        for (SettingRow r : allRows) r.visibleOnScreen = false;
+
+        int contentX = winX + sidebarW;
+        int contentW = winW - sidebarW;
+        int listY = winY + 62;
+        int rowHeight = 40;
+        int maxBottom = winY + winH - 10;
+
+        int maxScroll = Math.max(0, visibleRows.size() * rowHeight - (maxBottom - listY));
+        scrollOffset = MathHelper.clamp(scrollOffset, 0, maxScroll);
+
+        for (int i = 0; i < visibleRows.size(); i++) {
+            SettingRow row = visibleRows.get(i);
+            int ry = listY + i * rowHeight - scrollOffset;
+            if (ry >= listY - 4 && ry + rowHeight - 6 <= maxBottom) {
+                row.rowX = contentX + 12;
+                row.rowY = ry;
+                row.rowW = contentW - 24;
+                row.rowH = rowHeight - 6;
+                row.visibleOnScreen = true;
+            }
+        }
+    }
+
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        if (this.client != null && this.client.world == null) {
-            context.fillGradient(0, 0, this.width, this.height, 0xFF050B18, 0xFF0C1E3E);
-        } else {
-            context.fill(0, 0, this.width, this.height, 0x99040914);
-        }
+        context.fill(0, 0, this.width, this.height, 0x88040914);
     }
 
     @Override
@@ -239,190 +238,93 @@ public class VeloMenuScreen extends Screen {
         int primary = VeloClient.getPrimaryBlue();
         int accent = VeloClient.getAccentColor();
 
-        int bgSidebar = 0xF2080E1D;
-        int bgMain = 0xF20D1528;
-        int bgCard = 0xFF131F38;
-        int borderLine = 0xFF1B2B4B;
+        // Rundat modernt huvudfönster
+        VeloUiRenderer.drawRoundedBorder(context, winX, winY, winW, winH, 10, 0xFF1E3256, 0xF20B1324);
+        VeloUiRenderer.drawRoundedRect(context, winX, winY, sidebarW, winH, 10, 0xF2070D1B);
+        context.fill(winX + sidebarW, winY, winX + sidebarW + 1, winY + winH, 0xFF1B2B4B);
 
-        // Yttre fönsterskugga & ram
-        context.fill(winX - 2, winY - 2, winX + winW + 2, winY + winH + 2, 0x66000000);
-        context.fill(winX - 1, winY - 1, winX + winW + 1, winY + winH + 1, borderLine);
+        // Logga
+        context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", winX + 16, winY + 16, accent);
+        context.drawTextWithShadow(this.textRenderer, "§7Clean v1.7", winX + 16, winY + 28, 0xFF64748B);
 
-        // Vänster sidopanel & höger huvudyta
-        context.fill(winX, winY, winX + sidebarW, winY + winH, bgSidebar);
-        context.fill(winX + sidebarW, winY, winX + winW, winY + winH, bgMain);
-        context.fill(winX + sidebarW, winY, winX + sidebarW + 1, winY + winH, borderLine);
-
-        // Blå topp-accentlinje
-        context.fill(winX, winY, winX + winW, winY + 2, accent);
-
-        // --- VÄNSTER SIDOPANEL: BLADE-INSPIRERAD VELO-LOGGA ---
-        drawVeloLogo(context, winX + 16, winY + 15, primary, accent);
-
-        // Kategorier i sidopanelen
+        // Sidopanelens kategorier
         Category[] categories = Category.values();
-        int catStartY = winY + 52;
-        int catH = 26;
-
+        int catStartY = winY + 50;
+        int catH = 28;
         for (int i = 0; i < categories.length; i++) {
             Category cat = categories[i];
             int cy = catStartY + i * (catH + 4);
             int cx = winX + 8;
             int cw = sidebarW - 16;
+            boolean selected = (cat == selectedCategory) && (searchField == null || searchField.getText().isBlank());
+            boolean hovered = mouseX >= cx && mouseX <= cx + cw && mouseY >= cy && mouseY <= cy + catH;
 
-            boolean isSelected = (cat == selectedCategory) && (searchField == null || searchField.getText().isBlank());
-            boolean isHovered = mouseX >= cx && mouseX <= cx + cw && mouseY >= cy && mouseY <= cy + catH;
-
-            if (isSelected) {
-                context.fill(cx, cy, cx + cw, cy + catH, bgCard);
-                // Vertikal blå indikator-pill till vänster (som i BLADE-inspo)
-                context.fill(cx, cy + 5, cx + 3, cy + catH - 5, accent);
-            } else if (isHovered) {
-                context.fill(cx, cy, cx + cw, cy + catH, 0x80131F38);
+            if (selected) {
+                VeloUiRenderer.drawRoundedRect(context, cx, cy, cw, catH, 6, 0xFF14233F);
+                VeloUiRenderer.drawRoundedRect(context, cx, cy + 5, 3, catH - 10, 1, accent);
+            } else if (hovered) {
+                VeloUiRenderer.drawRoundedRect(context, cx, cy, cw, catH, 6, 0x8014233F);
             }
-
-            drawCategoryIcon(context, cat, cx + 10, cy + 8, isSelected ? accent : 0xFF64748B);
-            context.drawTextWithShadow(
-                    this.textRenderer,
-                    cat.label,
-                    cx + 26,
-                    cy + 9,
-                    isSelected ? 0xFFFFFFFF : 0xFF94A3B8
-            );
+            context.drawTextWithShadow(this.textRenderer, cat.label, cx + 12, cy + 10, selected ? 0xFFFFFFFF : 0xFF94A3B8);
         }
 
-        // Liten hjälptext längst ner i sidopanelen
-        context.drawTextWithShadow(this.textRenderer, "§7R-Shift: Meny", winX + 14, winY + winH - 24, 0xFF64748B);
-        context.drawTextWithShadow(this.textRenderer, "§7F6: Freecam", winX + 14, winY + winH - 13, 0xFF64748B);
-
-        // --- HÖGER PANEL: SÖKFÄLT + BREADCRUMB + INSTÄLLNINGAR ---
+        // Höger innehållsyta: sökruta + stäng-knapp + rubrik
         int contentX = winX + sidebarW;
         int contentW = winW - sidebarW;
+        VeloUiRenderer.drawRoundedBorder(context, contentX + 12, winY + 8, contentW - 40, 20, 6, 0xFF1E3256, 0xFF101B33);
 
-        // Sökruta högst upp
-        int searchBoxX = contentX + 12;
-        int searchBoxY = winY + 8;
-        int searchBoxW = contentW - 38;
-        int searchBoxH = 20;
-        context.fill(searchBoxX, searchBoxY, searchBoxX + searchBoxW, searchBoxY + searchBoxH, bgCard);
-        context.fill(searchBoxX, searchBoxY + searchBoxH - 1, searchBoxX + searchBoxW, searchBoxY + searchBoxH, borderLine);
-
-        // Förstoringsglas-ikon
-        drawSearchIcon(context, searchBoxX + 7, searchBoxY + 6, 0xFF64748B);
-
-        // Stäng-knapp (X) uppe till höger
         int closeX = winX + winW - 22;
         int closeY = winY + 8;
         boolean closeHover = mouseX >= closeX && mouseX <= closeX + 16 && mouseY >= closeY && mouseY <= closeY + 20;
         context.drawTextWithShadow(this.textRenderer, "✕", closeX + 4, closeY + 6, closeHover ? accent : 0xFF94A3B8);
 
-        // Breadcrumb: "Movement -> Player & Camera"
-        String query = (searchField != null) ? searchField.getText().trim().toLowerCase(Locale.ROOT) : "";
-        int breadY = winY + 36;
-        drawCategoryIcon(context, selectedCategory, contentX + 14, breadY, accent);
-        if (query.isEmpty()) {
-            context.drawTextWithShadow(
-                    this.textRenderer,
-                    "§f" + selectedCategory.label + "  §b→  §7" + selectedCategory.subLabel,
-                    contentX + 30,
-                    breadY + 1,
-                    0xFFFFFFFF
-            );
-        } else {
-            context.drawTextWithShadow(
-                    this.textRenderer,
-                    "§fSearch  §b→  §7\"" + searchField.getText() + "\"",
-                    contentX + 30,
-                    breadY + 1,
-                    0xFFFFFFFF
-            );
-        }
+        context.drawTextWithShadow(this.textRenderer, "§l" + selectedCategory.label + "  §b→  §7" + selectedCategory.subLabel,
+                contentX + 14, winY + 40, 0xFFFFFFFF);
 
-        // Sektionsrubrik
-        int secY = winY + 54;
-        context.drawTextWithShadow(this.textRenderer, "§lGeneral settings", contentX + 14, secY, 0xFFE2E8F0);
+        // Rader
+        List<SettingRow> visibleRows = getFilteredRows();
+        updateRowLayout(visibleRows);
 
-        // Filtrera och rita inställningsrader
-        List<SettingRow> visibleRows = new ArrayList<>();
-        for (SettingRow row : allRows) {
-            if (query.isEmpty()) {
-                if (row.category == selectedCategory) visibleRows.add(row);
-            } else {
-                if (row.name.toLowerCase(Locale.ROOT).contains(query) || row.subtitle.toLowerCase(Locale.ROOT).contains(query)) {
-                    visibleRows.add(row);
-                }
-            }
-        }
+        for (SettingRow row : visibleRows) {
+            if (!row.visibleOnScreen) continue;
+            boolean hovered = mouseX >= row.rowX && mouseX <= row.rowX + row.rowW && mouseY >= row.rowY && mouseY <= row.rowY + row.rowH;
+            VeloUiRenderer.drawRoundedBorder(context, row.rowX, row.rowY, row.rowW, row.rowH, 6,
+                    hovered ? accent : 0xFF1A2946, hovered ? 0xFF152440 : 0xCC101A30);
 
-        int listY = winY + 70;
-        int rowHeight = 38;
+            context.drawTextWithShadow(this.textRenderer, row.name, row.rowX + 10, row.rowY + 6, 0xFFF8FAFC);
+            context.drawTextWithShadow(this.textRenderer, "§7" + row.subtitle, row.rowX + 10, row.rowY + 18, 0xFF64748B);
 
-        for (int i = 0; i < visibleRows.size(); i++) {
-            SettingRow row = visibleRows.get(i);
-            int ry = listY + i * rowHeight;
-            if (ry + rowHeight > winY + winH - 6) break;
-
-            int rx = contentX + 12;
-            int rw = contentW - 24;
-            row.rowX = rx;
-            row.rowY = ry;
-            row.rowW = rw;
-            row.rowH = rowHeight - 4;
-
-            boolean hovered = mouseX >= rx && mouseX <= rx + rw && mouseY >= ry && mouseY <= ry + row.rowH;
-            context.fill(rx, ry, rx + rw, ry + row.rowH, hovered ? 0xFF15233E : 0x99111B30);
-            context.fill(rx, ry + row.rowH, rx + rw, ry + row.rowH + 1, borderLine);
-
-            // Titel + undertext till vänster
-            context.drawTextWithShadow(this.textRenderer, row.name, rx + 10, ry + 7, 0xFFF1F5F9);
-            context.drawTextWithShadow(this.textRenderer, "§7" + row.subtitle, rx + 10, ry + 19, 0xFF64748B);
-
-            // Kontroll till höger beroende på typ
             if (row.type == RowType.TOGGLE) {
                 boolean active = row.boolGetter.get();
-                int swW = 34;
-                int swH = 16;
-                int swX = rx + rw - swW - 10;
-                int swY = ry + (row.rowH - swH) / 2;
+                row.toggleAnim += ((active ? 1f : 0f) - row.toggleAnim) * 0.3f;
 
-                context.fill(swX, swY, swX + swW, swY + swH, active ? primary : 0xFF1E293B);
-                context.fill(swX, swY, swX + swW, swY + 1, active ? accent : 0xFF334155);
+                int swW = 34, swH = 16;
+                int swX = row.rowX + row.rowW - swW - 10;
+                int swY = row.rowY + (row.rowH - swH) / 2;
+                int swBg = VeloUiRenderer.lerpColor(0xFF1E293B, primary, row.toggleAnim);
+                VeloUiRenderer.drawRoundedRect(context, swX, swY, swW, swH, 7, swBg);
 
-                int knobSize = 12;
-                int knobX = active ? (swX + swW - knobSize - 2) : (swX + 2);
-                int knobY = swY + 2;
-                context.fill(knobX, knobY, knobX + knobSize, knobY + knobSize, active ? 0xFFFFFFFF : 0xFF94A3B8);
-
+                int knobX = swX + 2 + (int) ((swW - 16) * row.toggleAnim);
+                VeloUiRenderer.drawRoundedRect(context, knobX, swY + 2, 12, 12, 5, 0xFFFFFFFF);
             } else if (row.type == RowType.SLIDER) {
                 float val = row.floatGetter.get();
-                float pct = MathHelper.clamp((val - row.minVal) / (row.maxVal - row.minVal), 0.0f, 1.0f);
+                float pct = MathHelper.clamp((val - row.minVal) / (row.maxVal - row.minVal), 0f, 1f);
+                int trackW = 84, trackH = 4;
+                int trackX = row.rowX + row.rowW - trackW - 12;
+                int trackY = row.rowY + (row.rowH - trackH) / 2 + 2;
 
-                int trackW = 86;
-                int trackH = 4;
-                int trackX = rx + rw - trackW - 12;
-                int trackY = ry + (row.rowH - trackH) / 2 + 2;
-
-                String valStr = String.format(Locale.ROOT, "%.2f%s", val, row.suffix);
-                int valW = this.textRenderer.getWidth(valStr);
-                context.drawTextWithShadow(this.textRenderer, valStr, trackX - valW - 8, trackY - 3, accent);
-
-                context.fill(trackX, trackY, trackX + trackW, trackY + trackH, 0xFF1E293B);
-                int fillW = (int) (trackW * pct);
-                context.fill(trackX, trackY, trackX + fillW, trackY + trackH, accent);
-
-                int thumbX = trackX + fillW - 4;
-                int thumbY = trackY - 3;
-                context.fill(thumbX, thumbY, thumbX + 8, thumbY + 10, 0xFFFFFFFF);
-
+                String valStr = String.format(Locale.ROOT, "%.1f%s", val, row.suffix);
+                context.drawTextWithShadow(this.textRenderer, valStr, trackX - this.textRenderer.getWidth(valStr) - 8, trackY - 3, accent);
+                VeloUiRenderer.drawRoundedRect(context, trackX, trackY, trackW, trackH, 2, 0xFF1E293B);
+                VeloUiRenderer.drawRoundedRect(context, trackX, trackY, (int) (trackW * pct), trackH, 2, accent);
+                VeloUiRenderer.drawRoundedRect(context, trackX + (int) (trackW * pct) - 4, trackY - 3, 8, 10, 3, 0xFFFFFFFF);
             } else if (row.type == RowType.MODE) {
-                String modeVal = row.modeGetter.get() + "  ⌄";
+                String modeVal = row.modeGetter.get() + " ⌄";
                 int pillW = this.textRenderer.getWidth(modeVal) + 16;
                 int pillH = 18;
-                int pillX = rx + rw - pillW - 10;
-                int pillY = ry + (row.rowH - pillH) / 2;
-
-                context.fill(pillX, pillY, pillX + pillW, pillY + pillH, 0xFF1B2B4B);
-                context.fill(pillX, pillY, pillX + pillW, pillY + 1, accent);
+                int pillX = row.rowX + row.rowW - pillW - 10;
+                int pillY = row.rowY + (row.rowH - pillH) / 2;
+                VeloUiRenderer.drawRoundedBorder(context, pillX, pillY, pillW, pillH, 5, accent, 0xFF162542);
                 context.drawTextWithShadow(this.textRenderer, modeVal, pillX + 8, pillY + 5, 0xFFFFFFFF);
             }
         }
@@ -430,57 +332,12 @@ public class VeloMenuScreen extends Screen {
         super.render(context, mouseX, mouseY, delta);
     }
 
-    private void drawVeloLogo(DrawContext context, int x, int y, int primary, int accent) {
-        context.fill(x, y + 2, x + 12, y + 5, accent);
-        context.fill(x + 3, y + 5, x + 10, y + 8, primary);
-        context.fill(x + 1, y + 8, x + 11, y + 11, accent);
-        context.fill(x + 4, y + 11, x + 8, y + 15, primary);
-
-        context.drawTextWithShadow(this.textRenderer, "§lVELO", x + 18, y + 4, 0xFFFFFFFF);
-        context.drawTextWithShadow(this.textRenderer, "§bCLIENT", x + 50, y + 4, accent);
-    }
-
-    private void drawCategoryIcon(DrawContext context, Category cat, int x, int y, int color) {
-        switch (cat) {
-            case MOVEMENT -> {
-                context.fill(x + 1, y + 2, x + 8, y + 4, color);
-                context.fill(x + 3, y + 5, x + 10, y + 7, color);
-                context.fill(x + 1, y + 8, x + 8, y + 10, color);
-            }
-            case VISUALS -> {
-                context.fill(x + 2, y + 1, x + 8, y + 2, color);
-                context.fill(x + 1, y + 2, x + 2, y + 8, color);
-                context.fill(x + 8, y + 2, x + 9, y + 8, color);
-                context.fill(x + 2, y + 8, x + 8, y + 9, color);
-                context.fill(x + 4, y + 4, x + 6, y + 6, color);
-            }
-            case HAND -> {
-                context.fill(x + 1, y + 3, x + 7, y + 8, color);
-                context.fill(x + 8, y + 4, x + 10, y + 7, color);
-            }
-            case THEME -> {
-                context.fill(x + 1, y + 2, x + 9, y + 3, color);
-                context.fill(x + 1, y + 5, x + 9, y + 6, color);
-                context.fill(x + 1, y + 8, x + 9, y + 9, color);
-            }
-        }
-    }
-
-    private void drawSearchIcon(DrawContext context, int x, int y, int color) {
-        context.fill(x + 1, y, x + 5, y + 1, color);
-        context.fill(x, y + 1, x + 1, y + 5, color);
-        context.fill(x + 5, y + 1, x + 6, y + 5, color);
-        context.fill(x + 1, y + 5, x + 5, y + 6, color);
-        context.fill(x + 5, y + 5, x + 8, y + 8, color);
-    }
-
     @Override
     public boolean mouseClicked(Click click, boolean doubled) {
         double mouseX = click.x();
         double mouseY = click.y();
-        int button = click.button();
 
-        if (button == 0) {
+        if (click.button() == 0) {
             int closeX = winX + winW - 22;
             int closeY = winY + 8;
             if (mouseX >= closeX && mouseX <= closeX + 16 && mouseY >= closeY && mouseY <= closeY + 20) {
@@ -488,28 +345,30 @@ public class VeloMenuScreen extends Screen {
                 return true;
             }
 
+            // Kategoriklick
             Category[] categories = Category.values();
-            int catStartY = winY + 52;
-            int catH = 26;
+            int catStartY = winY + 50;
+            int catH = 28;
             for (int i = 0; i < categories.length; i++) {
                 int cy = catStartY + i * (catH + 4);
                 int cx = winX + 8;
                 int cw = sidebarW - 16;
                 if (mouseX >= cx && mouseX <= cx + cw && mouseY >= cy && mouseY <= cy + catH) {
                     selectedCategory = categories[i];
+                    scrollOffset = 0;
                     if (searchField != null) searchField.setText("");
                     return true;
                 }
             }
 
-            String query = (searchField != null) ? searchField.getText().trim().toLowerCase(Locale.ROOT) : "";
-            for (SettingRow row : allRows) {
-                boolean visible = query.isEmpty()
-                        ? (row.category == selectedCategory)
-                        : (row.name.toLowerCase(Locale.ROOT).contains(query) || row.subtitle.toLowerCase(Locale.ROOT).contains(query));
-                if (!visible) continue;
+            // Uppdatera layout innan vi kollar radklick så hitboxen alltid stämmer
+            List<SettingRow> visibleRows = getFilteredRows();
+            updateRowLayout(visibleRows);
 
+            for (SettingRow row : visibleRows) {
+                if (!row.visibleOnScreen) continue;
                 if (mouseX >= row.rowX && mouseX <= row.rowX + row.rowW && mouseY >= row.rowY && mouseY <= row.rowY + row.rowH) {
+                    if (searchField != null) searchField.setFocused(false);
                     if (row.type == RowType.TOGGLE) {
                         row.boolSetter.accept(!row.boolGetter.get());
                         return true;
@@ -524,7 +383,6 @@ public class VeloMenuScreen extends Screen {
                 }
             }
         }
-
         return super.mouseClicked(click, doubled);
     }
 
@@ -546,12 +404,17 @@ public class VeloMenuScreen extends Screen {
         return super.mouseReleased(click);
     }
 
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+        scrollOffset -= (int) (verticalAmount * 20);
+        return true;
+    }
+
     private void updateSlider(SettingRow row, double mouseX) {
-        int trackW = 86;
+        int trackW = 84;
         int trackX = row.rowX + row.rowW - trackW - 12;
         float pct = MathHelper.clamp((float) (mouseX - trackX) / (float) trackW, 0.0f, 1.0f);
-        float newVal = row.minVal + pct * (row.maxVal - row.minVal);
-        row.floatSetter.accept(newVal);
+        row.floatSetter.accept(row.minVal + pct * (row.maxVal - row.minVal));
     }
 
     @Override

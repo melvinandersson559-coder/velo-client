@@ -2,22 +2,47 @@ package com.velo.client;
 
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
 import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.client.gui.screen.option.OptionsScreen;
 import net.minecraft.client.gui.screen.world.SelectWorldScreen;
-import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
 import net.minecraft.text.Text;
 
 import java.lang.reflect.Constructor;
+import java.util.ArrayList;
 import java.util.List;
 
 public class VeloTitleScreen extends Screen {
+
+    private static class CleanButton {
+        int x, y, w, h;
+        String label;
+        Runnable action;
+        float hoverAnim = 0f;
+        boolean accentStyle;
+
+        CleanButton(int x, int y, int w, int h, String label, boolean accentStyle, Runnable action) {
+            this.x = x;
+            this.y = y;
+            this.w = w;
+            this.h = h;
+            this.label = label;
+            this.accentStyle = accentStyle;
+            this.action = action;
+        }
+
+        boolean isHovered(double mx, double my) {
+            return mx >= x && mx <= x + w && my >= y && my <= y + h;
+        }
+    }
+
+    private final List<CleanButton> cleanButtons = new ArrayList<>();
     private boolean addingServer = false;
     private TextFieldWidget nameField;
     private TextFieldWidget ipField;
@@ -29,64 +54,55 @@ public class VeloTitleScreen extends Screen {
     @Override
     protected void init() {
         this.clearChildren();
+        cleanButtons.clear();
         FavoriteServerManager.load();
 
         int centerY = this.height / 2;
+        int leftX = 36;
+        int btnW = 165;
+        int btnH = 26;
+        int startY = centerY - 78;
+        int gap = 32;
 
-        // Vänster kolumn: Huvudknappar
-        int leftX = 30;
-        int btnW = 150;
-        int btnH = 20;
-        int startY = centerY - 58;
-
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Singleplayer"), btn -> {
+        cleanButtons.add(new CleanButton(leftX, startY, btnW, btnH, "Singleplayer", true, () -> {
             if (this.client != null) this.client.setScreen(new SelectWorldScreen(this));
-        }).dimensions(leftX, startY, btnW, btnH).build());
-
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Multiplayer"), btn -> {
+        }));
+        cleanButtons.add(new CleanButton(leftX, startY + gap, btnW, btnH, "Multiplayer", true, () -> {
             if (this.client != null) this.client.setScreen(new MultiplayerScreen(this));
-        }).dimensions(leftX, startY + 25, btnW, btnH).build());
-
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("VELO Inställningar"), btn -> {
+        }));
+        cleanButtons.add(new CleanButton(leftX, startY + gap * 2, btnW, btnH, "VELO Inställningar", false, () -> {
             if (this.client != null) this.client.setScreen(new VeloMenuScreen(this));
-        }).dimensions(leftX, startY + 50, btnW, btnH).build());
-
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Mods (Mod Menu)"), btn -> {
-            openModMenu();
-        }).dimensions(leftX, startY + 75, btnW, btnH).build());
-
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Minecraft Options"), btn -> {
+        }));
+        cleanButtons.add(new CleanButton(leftX, startY + gap * 3, btnW, btnH, "Mods", false, this::openModMenu));
+        cleanButtons.add(new CleanButton(leftX, startY + gap * 4, btnW, btnH, "Minecraft Options", false, () -> {
             if (this.client != null) this.client.setScreen(new OptionsScreen(this, this.client.options));
-        }).dimensions(leftX, startY + 100, btnW, btnH).build());
-
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Avsluta spel"), btn -> {
+        }));
+        cleanButtons.add(new CleanButton(leftX, startY + gap * 5, btnW, btnH, "Avsluta spel", false, () -> {
             if (this.client != null) this.client.scheduleStop();
-        }).dimensions(leftX, startY + 125, btnW, btnH).build());
+        }));
 
         // Höger panel: Favoritservrar
-        int panelW = 205;
-        int panelX = this.width - panelW - 25;
-        int panelY = centerY - 75;
+        int panelW = 210;
+        int panelX = this.width - panelW - 32;
+        int panelY = centerY - 82;
 
-        this.addDrawableChild(ButtonWidget.builder(
-                Text.literal(addingServer ? "Avbryt" : "+ Lägg till favoritserver"),
-                btn -> {
-                    addingServer = !addingServer;
-                    this.init();
-                }).dimensions(panelX + 10, panelY + 24, panelW - 20, 18).build());
+        cleanButtons.add(new CleanButton(panelX + 12, panelY + 28, panelW - 24, 22,
+                addingServer ? "Avbryt" : "+ Lägg till server", true, () -> {
+            addingServer = !addingServer;
+            this.init();
+        }));
 
-        int listStartY = panelY + 48;
-
+        int listStartY = panelY + 58;
         if (addingServer) {
-            nameField = new TextFieldWidget(this.textRenderer, panelX + 10, listStartY, panelW - 20, 18, Text.literal("Servernamn"));
-            nameField.setPlaceholder(Text.literal("Namn (t.ex. Min Server)"));
+            nameField = new TextFieldWidget(this.textRenderer, panelX + 12, listStartY, panelW - 24, 20, Text.literal("Servernamn"));
+            nameField.setPlaceholder(Text.literal("Servernamn..."));
             this.addDrawableChild(nameField);
 
-            ipField = new TextFieldWidget(this.textRenderer, panelX + 10, listStartY + 23, panelW - 20, 18, Text.literal("Server-IP"));
+            ipField = new TextFieldWidget(this.textRenderer, panelX + 12, listStartY + 26, panelW - 24, 20, Text.literal("Server-IP"));
             ipField.setPlaceholder(Text.literal("IP (t.ex. mc.hypixel.net)"));
             this.addDrawableChild(ipField);
 
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Spara server"), btn -> {
+            cleanButtons.add(new CleanButton(panelX + 12, listStartY + 54, panelW - 24, 24, "Spara server", true, () -> {
                 String name = nameField.getText();
                 String ip = ipField.getText();
                 if (!ip.isBlank()) {
@@ -94,27 +110,21 @@ public class VeloTitleScreen extends Screen {
                     addingServer = false;
                     this.init();
                 }
-            }).dimensions(panelX + 10, listStartY + 46, panelW - 20, 20).build());
+            }));
         } else {
             List<FavoriteServerManager.ServerEntry> servers = FavoriteServerManager.getServers();
             int maxShown = Math.min(servers.size(), 5);
             for (int i = 0; i < maxShown; i++) {
                 final int index = i;
                 FavoriteServerManager.ServerEntry entry = servers.get(i);
-                int rowY = listStartY + (i * 24);
+                int rowY = listStartY + (i * 28);
 
-                this.addDrawableChild(ButtonWidget.builder(
-                        Text.literal("▶ " + entry.name),
-                        btn -> connectToServer(entry)
-                ).dimensions(panelX + 10, rowY, panelW - 44, 20).build());
-
-                this.addDrawableChild(ButtonWidget.builder(
-                        Text.literal("✕"),
-                        btn -> {
-                            FavoriteServerManager.removeServer(index);
-                            this.init();
-                        }
-                ).dimensions(panelX + panelW - 30, rowY, 20, 20).build());
+                cleanButtons.add(new CleanButton(panelX + 12, rowY, panelW - 50, 22, "▶  " + entry.name, false,
+                        () -> connectToServer(entry)));
+                cleanButtons.add(new CleanButton(panelX + panelW - 34, rowY, 22, 22, "✕", false, () -> {
+                    FavoriteServerManager.removeServer(index);
+                    this.init();
+                }));
             }
         }
     }
@@ -125,8 +135,7 @@ public class VeloTitleScreen extends Screen {
             try {
                 Class<?> modsScreenClass = Class.forName("com.terraformersmc.modmenu.gui.ModsScreen");
                 Constructor<?> ctor = modsScreenClass.getConstructor(Screen.class);
-                Screen modsScreen = (Screen) ctor.newInstance(this);
-                this.client.setScreen(modsScreen);
+                this.client.setScreen((Screen) ctor.newInstance(this));
                 return;
             } catch (Throwable ignored) {
             }
@@ -142,42 +151,48 @@ public class VeloTitleScreen extends Screen {
 
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        context.fillGradient(0, 0, this.width, this.height, 0xFF060E1F, 0xFF0F2547);
-        context.fill(0, 0, this.width, 3, VeloClient.getAccentColor());
-        context.fill(0, this.height - 2, this.width, this.height, VeloClient.getPrimaryBlue());
+        context.fillGradient(0, 0, this.width, this.height, 0xFF040914, 0xFF0C1E3C);
+        context.fill(0, 0, this.width, 2, VeloClient.getAccentColor());
     }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        super.render(context, mouseX, mouseY, delta);
-
         int centerX = this.width / 2;
         int centerY = this.height / 2;
+        int accent = VeloClient.getAccentColor();
+        int primary = VeloClient.getPrimaryBlue();
 
-        context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", 30, 22, VeloClient.getAccentColor());
-        context.drawTextWithShadow(this.textRenderer, "§7Fabric 1.21.11 • v1.6.0", 30, 34, VeloClient.COLOR_TEXT);
+        // Logotyp uppe till vänster
+        context.drawTextWithShadow(this.textRenderer, "§lVELO §r§bCLIENT", 36, 24, accent);
+        context.drawTextWithShadow(this.textRenderer, "§7v1.7.0  •  Clean Edition", 36, 36, 0xFF94A3B8);
 
+        // Höger server-panel (ritas innan knapparna så knapparna syns ovanpå)
+        int panelW = 210;
+        int panelH = 204;
+        int panelX = this.width - panelW - 32;
+        int panelY = centerY - 82;
+        VeloUiRenderer.drawRoundedBorder(context, panelX, panelY, panelW, panelH, 8, 0xFF1E3256, 0xCC0A1326);
+        context.drawTextWithShadow(this.textRenderer, "§lFAVORITSERVRAR", panelX + 14, panelY + 12, accent);
+
+        // Mitten: Spelarkort
         renderPlayerCard(context, centerX, centerY);
 
-        int panelW = 205;
-        int panelH = 180;
-        int panelX = this.width - panelW - 25;
-        int panelY = centerY - 75;
+        // Rita alla mjuka rundade knappar
+        for (CleanButton btn : cleanButtons) {
+            boolean hovered = btn.isHovered(mouseX, mouseY);
+            btn.hoverAnim += ((hovered ? 1.0f : 0.0f) - btn.hoverAnim) * 0.25f;
 
-        context.fill(panelX, panelY, panelX + panelW, panelY + panelH, VeloClient.COLOR_BG);
-        context.fill(panelX, panelY, panelX + panelW, panelY + 2, VeloClient.getAccentColor());
-        context.fill(panelX, panelY + panelH - 1, panelX + panelW, panelY + panelH, VeloClient.getPrimaryBlue());
-        context.drawTextWithShadow(this.textRenderer, "§lFAVORITSERVRAR", panelX + 10, panelY + 9, VeloClient.getAccentColor());
+            int baseFill = btn.accentStyle ? 0xFF112240 : 0xCC0D182E;
+            int hoverFill = btn.accentStyle ? primary : 0xFF1A2D4F;
+            int fill = VeloUiRenderer.lerpColor(baseFill, hoverFill, btn.hoverAnim);
+            int border = VeloUiRenderer.lerpColor(0xFF1E3256, accent, btn.hoverAnim);
 
-        if (!addingServer && FavoriteServerManager.getServers().isEmpty()) {
-            context.drawCenteredTextWithShadow(
-                    this.textRenderer,
-                    "§7Inga favoritservrar ännu",
-                    panelX + panelW / 2,
-                    panelY + 75,
-                    VeloClient.COLOR_TEXT
-            );
+            VeloUiRenderer.drawRoundedBorder(context, btn.x, btn.y, btn.w, btn.h, 6, border, fill);
+            int textColor = VeloUiRenderer.lerpColor(0xFFE2E8F0, 0xFFFFFFFF, btn.hoverAnim);
+            context.drawCenteredTextWithShadow(this.textRenderer, btn.label, btn.x + btn.w / 2, btn.y + (btn.h - 8) / 2, textColor);
         }
+
+        super.render(context, mouseX, mouseY, delta);
     }
 
     private void renderPlayerCard(DrawContext context, int centerX, int centerY) {
@@ -185,49 +200,37 @@ public class VeloTitleScreen extends Screen {
         String playerName = mc.getSession().getUsername();
         int[][] skin = PlayerSkinCache.getSkinPixels(playerName);
 
-        int cardW = 122;
-        int cardH = 180;
-        int cardX = centerX - cardW / 2 - 12;
-        int cardY = centerY - 75;
+        int cardW = 128;
+        int cardH = 190;
+        int cardX = centerX - cardW / 2 - 8;
+        int cardY = centerY - 76;
 
-        context.fill(cardX, cardY, cardX + cardW, cardY + cardH, VeloClient.COLOR_BG);
-        context.fill(cardX, cardY, cardX + cardW, cardY + 2, VeloClient.getAccentColor());
-        context.fill(cardX, cardY + cardH - 1, cardX + cardW, cardY + cardH, VeloClient.getPrimaryBlue());
+        VeloUiRenderer.drawRoundedBorder(context, cardX, cardY, cardW, cardH, 8, 0xFF1E3256, 0xCC0A1326);
 
-        int bob = (int) Math.round(Math.sin(System.currentTimeMillis() / 350.0) * 2.0);
+        int bob = (int) Math.round(Math.sin(System.currentTimeMillis() / 380.0) * 2.0);
         int scale = 4;
         int charCenterX = cardX + cardW / 2;
         int headX = charCenterX - (4 * scale);
-        int headY = cardY + 14 + bob;
+        int headY = cardY + 18 + bob;
 
         drawSkinRegion(context, skin, 8, 8, 8, 8, headX, headY, scale, false);
         drawSkinRegion(context, skin, 40, 8, 8, 8, headX, headY, scale, true);
 
         int bodyY = headY + (8 * scale) + 1;
         int torsoX = charCenterX - (4 * scale);
-
         drawSkinRegion(context, skin, 20, 20, 8, 12, torsoX, bodyY, scale, false);
         drawSkinRegion(context, skin, 20, 36, 8, 12, torsoX, bodyY, scale, true);
-
         drawSkinRegion(context, skin, 44, 20, 4, 12, torsoX - (4 * scale) - 1, bodyY, scale, false);
 
         boolean is64x64 = skin[0].length >= 64;
-        if (is64x64) {
-            drawSkinRegion(context, skin, 36, 52, 4, 12, torsoX + (8 * scale) + 1, bodyY, scale, false);
-        } else {
-            drawSkinRegion(context, skin, 44, 20, 4, 12, torsoX + (8 * scale) + 1, bodyY, scale, false);
-        }
+        drawSkinRegion(context, skin, is64x64 ? 36 : 44, is64x64 ? 52 : 20, 4, 12, torsoX + (8 * scale) + 1, bodyY, scale, false);
 
         int legsY = bodyY + (12 * scale) + 1;
         drawSkinRegion(context, skin, 4, 20, 4, 12, torsoX, legsY, scale, false);
-        if (is64x64) {
-            drawSkinRegion(context, skin, 20, 52, 4, 12, torsoX + (4 * scale), legsY, scale, false);
-        } else {
-            drawSkinRegion(context, skin, 4, 20, 4, 12, torsoX + (4 * scale), legsY, scale, false);
-        }
+        drawSkinRegion(context, skin, is64x64 ? 20 : 4, is64x64 ? 52 : 20, 4, 12, torsoX + (4 * scale), legsY, scale, false);
 
-        context.drawCenteredTextWithShadow(this.textRenderer, "§f§l" + playerName, charCenterX, cardY + cardH - 27, VeloClient.COLOR_TEXT);
-        context.drawCenteredTextWithShadow(this.textRenderer, "§b● VELO Client", charCenterX, cardY + cardH - 15, VeloClient.getAccentColor());
+        context.drawCenteredTextWithShadow(this.textRenderer, "§f§l" + playerName, charCenterX, cardY + cardH - 28, 0xFFFFFFFF);
+        context.drawCenteredTextWithShadow(this.textRenderer, "§b● Online", charCenterX, cardY + cardH - 16, VeloClient.getAccentColor());
     }
 
     private void drawSkinRegion(DrawContext context, int[][] skin, int srcX, int srcY, int w, int h, int dstX, int dstY, int scale, boolean overlay) {
@@ -238,12 +241,22 @@ public class VeloTitleScreen extends Screen {
                 int alpha = (argb >>> 24) & 0xFF;
                 if (overlay && alpha < 128) continue;
                 if (!overlay && alpha == 0) continue;
-                int opaqueColor = (0xFF << 24) | (argb & 0x00FFFFFF);
-                int px = dstX + x * scale;
-                int py = dstY + y * scale;
-                context.fill(px, py, px + scale, py + scale, opaqueColor);
+                context.fill(dstX + x * scale, dstY + y * scale, dstX + (x + 1) * scale, dstY + (y + 1) * scale, (0xFF << 24) | (argb & 0x00FFFFFF));
             }
         }
+    }
+
+    @Override
+    public boolean mouseClicked(Click click, boolean doubled) {
+        if (click.button() == 0) {
+            for (CleanButton btn : cleanButtons) {
+                if (btn.isHovered(click.x(), click.y())) {
+                    btn.action.run();
+                    return true;
+                }
+            }
+        }
+        return super.mouseClicked(click, doubled);
     }
 
     @Override
